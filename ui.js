@@ -120,79 +120,125 @@
   const instalada = () => window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
 
   /* ---------- Resúmenes que me pasaste en fotos ----------
-     Se ofrecen una sola vez, en Hoy, y no se guarda nada hasta que tocás Cargar. */
-  const IMPORTES = [{
-    id: 'bbva-oct26',
-    titulo: 'Tus resúmenes BBVA de octubre',
-    detalle: 'Cerraron el 22/10. El próximo cierre es el 19/11 y vence el 3/12.',
-    ym: '2026-11', cierre: 19,
-    tarjetas: [
-      { buscar: 'master', real: 710797.26, cuotas: [
+     Se ofrecen una sola vez, en Hoy, y no se guarda nada hasta que tocás Cargar.
+     BBVA de noviembre ya está pagado: solo quedan las cuotas que siguen. Mercado Pago de octubre y Naranja los pagó tu papá. */
+  const IMPORTE = {
+    id: 'resumenes-nov26',
+    viejo: 'bbva-oct26',
+    titulo: 'Tus tarjetas y lo de tu papá',
+    bbva: { ym: '2026-11', pagado: '2026-11-04', cierre: 19, tarjetas: [
+      { buscar: 'master', total: 710797.26, cuotas: [
         { nombre: 'Jetsmart', cuota: 49729.60, n: 1, de: 2, fecha: '2026-09-30' },
         { nombre: 'Modo QR Quade', cuota: 26999.68, n: 1, de: 3, fecha: '2026-10-16' }
       ] },
-      { buscar: 'visa', real: 2075772.84, cuotas: [
+      { buscar: 'visa', total: 2075772.84, cuotas: [
         { nombre: 'Decathlon', cuota: 25133.33, n: 5, de: 6, fecha: '2026-06-06' },
         { nombre: 'Newsport', cuota: 30000, n: 5, de: 6, fecha: '2026-06-16' },
         { nombre: 'Plataforma 10', cuota: 74360, n: 1, de: 3, fecha: '2026-09-27' },
         { nombre: 'Trigital Cines', cuota: 9013.34, n: 1, de: 3, fecha: '2026-09-28' },
         { nombre: 'Plataforma 10 (2)', cuota: 17256.68, n: 1, de: 3, fecha: '2026-09-30' },
         { nombre: 'El Emporio Libros', cuota: 59849.70, n: 1, de: 3, fecha: '2026-10-02' }
-      ], fijo: { nombre: 'Plan Peugeot', monto: 486125.19, desde: '2026-12' } }
-    ]
-  }];
-  const buscarTarjeta = (s, clave) => s.tarjetas.find(t => t.id === clave) || s.tarjetas.find(t => E.normalizar(t.nombre).split(/\s+/).includes(clave));
-  const importePendiente = s => IMPORTES.find(im => !((s.config.importados || []).includes(im.id)) && im.tarjetas.every(x => buscarTarjeta(s, x.buscar)));
+      ] }
+    ] },
+    peugeot: { buscar: 'visa', nombre: 'Plan Peugeot (tu mitad)', total: 486125.19, monto: 243062.60, desde: '2026-12' },
+    mp: { buscar: 'mp', ym: '2026-10', total: 752335.97, pagado: '2026-10-17', cierre: 12, cuotas: [
+      { nombre: 'Newsan', cuota: 54188.77, n: 5, de: 9, fecha: '2026-05-13' },
+      { nombre: 'Kiosco Finca', cuota: 108333.83, n: 2, de: 3, fecha: '2026-08-19' },
+      { nombre: 'Zivals', cuota: 46973.88, n: 1, de: 3, fecha: '2026-09-21' },
+      { nombre: 'Hadouken', cuota: 20500, n: 1, de: 2, fecha: '2026-09-25' }
+    ] },
+    naranja: { monto: 154600, detalle: '$44.600 + $110.000' }
+  };
+  const buscarTarjeta = (s, clave) => s.tarjetas.find(t => t.id === clave) || s.tarjetas.find(t => {
+    const n = E.normalizar(t.nombre);
+    return clave === 'mp' ? n.includes('mercado pago') : n.split(/\s+/).includes(clave);
+  });
+  const buscarPapa = s => s.deudas.find(d => /\bpap[aá]|\bviejo\b/.test(E.normalizar(d.nombre)));
+  const importePendiente = s => !((s.config.importados || []).includes(IMPORTE.id)) && ['visa', 'master', 'mp'].every(k => buscarTarjeta(s, k));
   const primeraPalabra = n => E.normalizar(n).split(/[\s(]+/)[0];
   const yaEstaCuota = (s, medio, q) => s.compras.some(c => c.medio === medio && c.cuotas === q.de && primeraPalabra(c.nombre) === primeraPalabra(q.nombre) && Math.abs(c.monto / c.cuotas - q.cuota) < 2);
-  const avisoImporte = s => {
-    const im = importePendiente(s);
-    return im ? `<div class="aviso azul"><strong>${esc(im.titulo)}</strong><span>Los pasé de tus fotos: totales a pagar, cuotas que siguen y el plan Peugeot. Revisalos antes de cargarlos.</span><button class="link" data-a="verImporte" data-id="${im.id}">Revisar y cargar</button></div>` : '';
-  };
-  function hojaImporte(id) {
-    const s = App.s, im = IMPORTES.find(x => x.id === id);
-    if (!im) return;
-    const bloques = im.tarjetas.map(x => {
+  const avisoImporte = s => importePendiente(s)
+    ? `<div class="aviso azul"><strong>${esc(IMPORTE.titulo)}</strong><span>Las cuotas que siguen en Visa, Master y Mercado Pago, tu mitad del plan Peugeot y lo que le debés a tu papá. Revisalo antes de cargarlo.</span><button class="link" data-a="verImporte">Revisar y cargar</button></div>`
+    : '';
+  const filasCuotas = (s, t, cuotas, ym) => cuotas.map(q => {
+    const quedan = q.de - q.n, ya = yaEstaCuota(s, t.id, q);
+    return `<div class="fila"><span class="izq"><span class="nom">${esc(q.nombre)}</span><span class="chico">${quedan === 1 ? 'Queda 1 cuota' : `Quedan ${quedan} cuotas`}, desde ${esc(E.mesNombre(E.sumarMes(ym, 1)))}${ya ? ' · ya la tenías, no la repito' : ''}</span></span><span class="der"><span class="num">${f(q.cuota)}</span></span></div>`;
+  }).join('');
+  function hojaImporte() {
+    const s = App.s, im = IMPORTE, papa = buscarPapa(s);
+    const bbva = im.bbva.tarjetas.map(x => {
       const t = buscarTarjeta(s, x.buscar);
-      const r = E.resumen(s, t.id, im.ym, hoy());
-      const cuotas = x.cuotas.map(q => {
-        const ya = yaEstaCuota(s, t.id, q);
-        const quedan = q.de - q.n;
-        return `<div class="fila"><span class="izq"><span class="nom">${esc(q.nombre)}</span><span class="chico">Cuota ${q.n} de ${q.de} en este resumen · ${quedan === 1 ? 'queda 1' : `quedan ${quedan}`}${ya ? ' · ya la tenías, no la repito' : ''}</span></span><span class="der"><span class="num">${f(q.cuota)}</span></span></div>`;
-      }).join('');
-      const fijo = x.fijo ? `<label class="check"><input type="checkbox" name="imp-fijo-${x.buscar}" checked> ${esc(x.fijo.nombre)} todos los meses: ${f(x.fijo.monto)}</label><p class="ayuda">Aparece dos veces en este resumen (27/9 y 21/10). Si no es mensual, destildalo.</p>` : '';
       return `<section class="bloque">
-          <div class="entre"><h2>${punto(t.id)}${esc(t.nombre)}</h2><span class="num">${f(x.real)}</span></div>
-          <p class="chico">Total a pagar de ${E.mesNombre(im.ym)}${r.real != null ? ` (hoy tenías cargado ${f(r.real)})` : ''}.</p>
-          <div class="lista">${cuotas}</div>
-          ${fijo}
+          <div class="entre"><h2>${punto(t.id)}${esc(t.nombre)}</h2>${pill('bien', 'Pagada', '✓')}</div>
+          <p class="chico">El resumen de noviembre (${f(x.total)}) queda como pagado el 4/11. No te descuento nada de tu plata: ya salió.</p>
+          <div class="lista">${filasCuotas(s, t, x.cuotas, im.bbva.ym)}</div>
         </section>`;
     }).join('');
-    abrirHoja(im.titulo, `<form data-form="importe" data-id="${im.id}">
-        ${bloques}
-        <p class="ayuda">También dejo el cierre de las dos en el día ${im.cierre}. Si ya pagaste alguno de estos resúmenes, marcalo después en Tarjetas.</p>
+    const tmp = buscarTarjeta(s, im.mp.buscar);
+    const deudaHoy = papa ? f(E.deudaEnARS(s, papa)) : null;
+    abrirHoja(im.titulo, `<form data-form="importe">
+        ${bbva}
+        <section class="bloque">
+          <div class="entre"><h2>Plan Peugeot</h2><span class="num">${f(im.peugeot.monto)}</span></div>
+          <p class="chico">Uno por mes en la Visa (${f(im.peugeot.total)}). Pagás la mitad y tu papá la otra, así que cuento solo tu parte. En octubre entraron dos por error.</p>
+        </section>
+        <section class="bloque">
+          <div class="entre"><h2>${punto(tmp.id)}${esc(tmp.nombre)}</h2>${pill('azul', 'La pagó tu papá')}</div>
+          <p class="chico">El resumen de octubre (${f(im.mp.total)}) lo pagó tu papá: queda como pagado y se suma a lo que le debés.</p>
+          <div class="lista">${filasCuotas(s, tmp, im.mp.cuotas, im.mp.ym)}</div>
+        </section>
+        <section class="bloque">
+          <div class="entre"><h2>Le debés a tu papá</h2><span class="num v-mal">+${f(im.mp.total + im.naranja.monto)}</span></div>
+          <div class="lista">
+            <div class="fila"><span class="izq"><span class="nom">Mercado Pago de octubre</span></span><span class="der"><span class="num">${f(im.mp.total)}</span></span></div>
+            <div class="fila"><span class="izq"><span class="nom">Naranja</span><span class="chico">${esc(im.naranja.detalle)}</span></span><span class="der"><span class="num">${f(im.naranja.monto)}</span></span></div>
+          </div>
+          <p class="chico">${papa ? `Se suma a ${esc(papa.nombre)}, que hoy está en ${deudaHoy}.` : 'Creo la deuda "Papá".'}</p>
+        </section>
+        <p class="ayuda">También dejo el cierre de Visa y Master el día ${im.bbva.cierre} y el de Mercado Pago el ${im.mp.cierre}.</p>
         <button class="btn prim lleno">Cargar</button>
-        <button type="button" class="btn lleno" data-a="descartarImporte" data-id="${im.id}">No cargar</button>
-      </form>`, im.detalle);
+        <button type="button" class="btn lleno" data-a="descartarImporte">No cargar</button>
+      </form>`);
   }
-  const aplicarImporte = (s, im, conFijo) => {
-    for (const x of im.tarjetas) {
-      const t = buscarTarjeta(s, x.buscar);
-      E.fijarResumenReal(s, t.id, im.ym, x.real);
-      t.cierre = im.cierre; t.cierreEstimado = false;
-      for (const q of x.cuotas) {
-        if (yaEstaCuota(s, t.id, q)) continue;
-        const a = E.clasificar(s, { nombre: q.nombre, monto: q.cuota * q.de, cuotas: q.de }, q.fecha);
-        s.compras.push({ id: E.uid(), nombre: q.nombre, monto: Math.round(q.cuota * q.de * 100) / 100, cuotas: q.de, medio: t.id, fecha: q.fecha, texto: '', clase: a.clase, motivo: a.motivo, fuente: 'resumen', primerVence: E.sumarMes(im.ym, -(q.n - 1)), pagadas: q.n });
-      }
-      if (x.fijo && conFijo[x.buscar]) {
-        s.fijos = s.fijos || [];
-        const ya = s.fijos.find(y => E.normalizar(y.nombre).includes(primeraPalabra(x.fijo.nombre.split(' ').pop())));
-        if (ya) { ya.monto = x.fijo.monto; ya.medio = t.id; ya.activo = true; }
-        else s.fijos.push({ id: E.uid(), nombre: x.fijo.nombre, monto: x.fijo.monto, medio: t.id, desde: x.fijo.desde, activo: true });
-      }
+  const sumarCuotas = (s, t, cuotas, ym) => {
+    for (const q of cuotas) {
+      if (yaEstaCuota(s, t.id, q)) continue;
+      const a = E.clasificar(s, { nombre: q.nombre, monto: q.cuota * q.de, cuotas: q.de }, q.fecha);
+      s.compras.push({ id: E.uid(), nombre: q.nombre, monto: Math.round(q.cuota * q.de * 100) / 100, cuotas: q.de, medio: t.id, fecha: q.fecha, texto: '', clase: a.clase, motivo: a.motivo, fuente: 'resumen', primerVence: E.sumarMes(ym, -(q.n - 1)), pagadas: q.n });
     }
-    s.config.importados = [...(s.config.importados || []), im.id];
+  };
+  /* Un resumen que ya estaba pagado antes de usar Mango: queda saldado sin tocar tu plata. */
+  const marcarPagadoAntes = (s, cardId, ym, total, fecha) => {
+    const key = `${cardId}:${ym}`, rec = (s.resumenes[key] = s.resumenes[key] || {});
+    rec.real = total;
+    rec.pagos = (rec.pagos || []).filter(p => !p.importado);
+    rec.pagos.push({ id: E.uid(), monto: total, fecha, quien: 'yo', nota: 'Pagado antes de cargarlo', importado: true });
+  };
+  const aplicarImporte = s => {
+    const im = IMPORTE;
+    for (const x of im.bbva.tarjetas) {
+      const t = buscarTarjeta(s, x.buscar);
+      marcarPagadoAntes(s, t.id, im.bbva.ym, x.total, im.bbva.pagado);
+      t.cierre = im.bbva.cierre; t.cierreEstimado = false;
+      sumarCuotas(s, t, x.cuotas, im.bbva.ym);
+    }
+    /* Peugeot: si ya estaba cargado (completo o sin monto), queda solo tu mitad. */
+    const visa = buscarTarjeta(s, im.peugeot.buscar);
+    s.fijos = s.fijos || [];
+    const pg = s.fijos.find(y => E.normalizar(y.nombre).includes('peugeot'));
+    if (pg) Object.assign(pg, { nombre: im.peugeot.nombre, monto: im.peugeot.monto, medio: visa.id, activo: true });
+    else s.fijos.push({ id: E.uid(), nombre: im.peugeot.nombre, monto: im.peugeot.monto, medio: visa.id, desde: im.peugeot.desde, activo: true });
+    /* Mercado Pago de octubre: lo pagó tu papá, así que pasa a ser deuda con él. */
+    let papa = buscarPapa(s);
+    if (!papa) { papa = E.nuevaDeuda(s, { nombre: 'Papá', moneda: 'ARS', monto: 0, fecha: hoy(), nota: '' }); }
+    const tmp = buscarTarjeta(s, im.mp.buscar);
+    tmp.cierre = im.mp.cierre; tmp.cierreEstimado = false;
+    s.resumenes[`${tmp.id}:${im.mp.ym}`] = s.resumenes[`${tmp.id}:${im.mp.ym}`] || {};
+    s.resumenes[`${tmp.id}:${im.mp.ym}`].real = im.mp.total;
+    E.pagarResumen(s, { cardId: tmp.id, ym: im.mp.ym, monto: im.mp.total, fecha: im.mp.pagado, quien: papa.id, nota: 'Lo pagó tu papá' });
+    sumarCuotas(s, tmp, im.mp.cuotas, im.mp.ym);
+    E.sumarDeuda(s, { id: papa.id, monto: im.naranja.monto, fecha: hoy(), nota: `Naranja que pagó (${im.naranja.detalle})` });
+    s.config.importados = [...(s.config.importados || []).filter(x => x !== im.viejo), im.viejo, im.id];
     E.tocar(s);
   };
 
@@ -1265,8 +1311,8 @@
   /* ---------- Acciones ---------- */
   const A = {
     cerrar: cerrarHoja,
-    verImporte: d => hojaImporte(d.id),
-    descartarImporte: d => { cerrarHoja(); mutar(s => { s.config.importados = [...(s.config.importados || []), d.id]; E.tocar(s); }, 'Listo, no los cargo.'); },
+    verImporte: () => hojaImporte(),
+    descartarImporte: () => { cerrarHoja(); mutar(s => { s.config.importados = [...(s.config.importados || []), IMPORTE.id]; E.tocar(s); }, 'Listo, no lo cargo.'); },
     ir: d => { if (d.tab === 'repartir') App.rep.real = false; ir(d.tab, d.sub); },
     entro: () => { App.rep.real = true; App.rep.origen = null; ir('repartir'); },
     sub: d => { App.sub = d.sub; render(); },
@@ -1630,13 +1676,9 @@
       mutar(s => E.sumarCobro(s, { concepto, monto, vence: val('sc-vence') || hoy(), estado: val('sc-estado') }), 'Sumado a lo que te deben.');
     },
     compro: () => { App.comproHecho = true; App.comproSalto = true; render(); const el = document.querySelector('.veredicto'); if (el) el.scrollIntoView({ block: 'nearest' }); },
-    importe: form => {
-      const im = IMPORTES.find(x => x.id === form.dataset.id);
-      if (!im) return;
-      const conFijo = {};
-      im.tarjetas.forEach(x => { const el = form.elements[`imp-fijo-${x.buscar}`]; conFijo[x.buscar] = !!(el && el.checked); });
+    importe: () => {
       cerrarHoja();
-      mutar(s => aplicarImporte(s, im, conFijo), 'Resúmenes cargados.');
+      mutar(s => aplicarImporte(s), 'Listo, cargado.');
     },
     ajustes: (form, val) => {
       const s0 = App.s, caja = E.parsearMonto(val('a-caja')), topeTxt = val('a-tope').trim(), tope = topeTxt ? E.parsearMonto(topeTxt) : null, tc = E.parsearMonto(val('a-tc'));
