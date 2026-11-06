@@ -38,11 +38,13 @@
     estadoGuardado = null; mesesGuardados = {};
     const dEstado = F.doc(db, 'usuarios', uid, 'datos', 'estado');
     const cCompras = F.collection(db, 'usuarios', uid, 'compras');
-    escuchas.push(F.onSnapshot(dEstado, snap => {
+    /* includeMetadataChanges: avisa también cuando el servidor confirma lo que había en el dispositivo, aunque no haya cambiado nada. Sin esto, una cuenta vacía se queda esperando. */
+    const opciones = { includeMetadataChanges: true };
+    escuchas.push(F.onSnapshot(dEstado, opciones, snap => {
       if (snap.metadata.hasPendingWrites) return;
       alEstado(snap.exists() ? snap.data() : null, snap.metadata);
     }, alError));
-    escuchas.push(F.onSnapshot(cCompras, snap => {
+    escuchas.push(F.onSnapshot(cCompras, opciones, snap => {
       if (snap.metadata.hasPendingWrites) return;
       const meses = {};
       snap.forEach(d => { meses[d.id] = d.data().items || []; });

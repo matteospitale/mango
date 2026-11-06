@@ -1389,7 +1389,7 @@
     const activo = document.activeElement;
     if ($('hoja').hidden && !(activo && /INPUT|TEXTAREA|SELECT/.test(activo.tagName))) render();
   };
-  let estadoRemoto, mesesRemotos;
+  let estadoRemoto, mesesRemotos, comprasEnCache;
   const aplicarRemoto = () => {
     if (estadoRemoto === undefined || mesesRemotos === undefined || window.Nube.haySinGuardar()) return;
     if (estadoRemoto === null) {
@@ -1417,17 +1417,19 @@
     if (!u) { App.s = null; App.fase = 'login'; render(); return; }
     App.fase = 'cargando'; App.mensajeCarga = null;
     render();
-    estadoRemoto = undefined; mesesRemotos = undefined;
+    estadoRemoto = undefined; mesesRemotos = undefined; comprasEnCache = undefined;
     const sinRespuesta = setTimeout(() => { if (App.fase === 'cargando') { App.fase = 'error'; render(); } }, 15000);
     window.Nube.escuchar(u.uid, {
       alEstado: (d, meta) => {
         if (d === null && meta.fromCache) return;
         clearTimeout(sinRespuesta);
         estadoRemoto = d;
+        /* Sin internet alcanza con lo guardado en el dispositivo. Si después llega algo más de la nube, se actualiza. */
+        if (d && mesesRemotos === undefined) mesesRemotos = comprasEnCache || {};
         aplicarRemoto();
       },
       alCompras: (m, meta) => {
-        if (!Object.keys(m).length && meta.fromCache) return;
+        if (!Object.keys(m).length && meta.fromCache && !estadoRemoto) { comprasEnCache = m; return; }
         mesesRemotos = m;
         aplicarRemoto();
       },
