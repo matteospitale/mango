@@ -83,11 +83,11 @@
   };
 
   /* ---------- Hoja inferior ---------- */
-  const abrirHoja = (titulo, cuerpo, sub = '') => {
+  const abrirHoja = (titulo, cuerpo, sub = '', { ancha = false } = {}) => {
     const h = $('hoja');
     h.className = 'hoja';
     h.hidden = false;
-    h.innerHTML = `<div class="hoja-fondo" data-a="cerrar"></div><div class="hoja-panel" role="dialog" aria-modal="true" aria-label="${esc(titulo)}"><div class="hoja-cab"><div><h2>${esc(titulo)}</h2>${sub ? `<p class="sub">${sub}</p>` : ''}</div><button type="button" class="cerrar" data-a="cerrar" aria-label="Cerrar">×</button></div>${cuerpo}</div>`;
+    h.innerHTML = `<div class="hoja-fondo" data-a="cerrar"></div><div class="hoja-panel${ancha ? ' ancha' : ''}" role="dialog" aria-modal="true" aria-label="${esc(titulo)}"><div class="hoja-cab"><div><h2>${esc(titulo)}</h2>${sub ? `<p class="sub">${sub}</p>` : ''}</div><button type="button" class="cerrar" data-a="cerrar" aria-label="Cerrar">×</button></div>${cuerpo}</div>`;
     document.body.style.overflow = 'hidden';
   };
   const cerrarHoja = () => {
@@ -163,7 +163,8 @@
     : '';
   const filasCuotas = (s, t, cuotas, ym) => cuotas.map(q => {
     const quedan = q.de - q.n, ya = yaEstaCuota(s, t.id, q);
-    return `<div class="fila"><span class="izq"><span class="nom">${esc(q.nombre)}</span><span class="chico">${quedan === 1 ? 'Queda 1 cuota' : `Quedan ${quedan} cuotas`}, desde ${esc(E.mesNombre(E.sumarMes(ym, 1)))}${ya ? ' · ya la tenías, no la repito' : ''}</span></span><span class="der"><span class="num">${f(q.cuota)}</span></span></div>`;
+    const fin = E.sumarMes(ym, quedan), mesFin = fin.slice(0, 4) === hoy().slice(0, 4) ? E.mesNombre(fin) : E.mesAnio(fin);
+    return `<div class="fila"><span class="izq"><span class="nom">${esc(q.nombre)}</span><span class="chico">${quedan === 1 ? `Te queda 1 cuota: termina en ${esc(mesFin)}` : `Te quedan ${quedan} cuotas: termina en ${esc(mesFin)}`}${ya ? ' · ya la tenías, no la repito' : ''}</span></span><span class="der"><span class="num">${f(q.cuota)}</span></span></div>`;
   }).join('');
   function hojaImporte() {
     const s = App.s, im = IMPORTE, papa = buscarPapa(s);
@@ -741,6 +742,22 @@
       </section>`;
   };
 
+  /* Mi consejo: la razón principal, los números que la explican y qué hacer en vez de comprar ya. */
+  const bloqueConsejo = (s, p, plan, h, a) => {
+    const c = E.consejoCompra(s, { nombre: p.nombre, plan, medio: p.medio && E.esTarjeta(s, p.medio) ? p.medio : null }, h);
+    const tono = { bien: 'v-bien', ojo: 'v-ojo', mal: 'v-mal', neutro: '' };
+    const ensenar = a.fuente === 'duda' && p.nombre
+      ? `<div class="campo"><span class="et-campo">¿Qué es ${esc(p.nombre)} para vos?</span><div class="chips">${Object.entries(CLASES).map(([k, v]) => `<button type="button" class="chip" data-a="aprenderCompro" data-clase="${k}">${esc(v.t)}</button>`).join('')}</div></div>`
+      : '';
+    return `<section class="bloque">
+        <div class="entre"><h2>Mi consejo</h2>${pillClase(a.clase)}</div>
+        <p><strong>${esc(c.resumen)}</strong></p>
+        <p class="chico">${esc(a.motivo)}</p>
+        <div class="lista">${c.puntos.map(x => `<div class="fila"><span class="izq"><span class="nom ${tono[x.tono] || ''}">${esc(x.titulo)}</span><span class="chico">${esc(x.texto)}</span></span></div>`).join('')}</div>
+        ${ensenar}
+      </section>`;
+  };
+
   /* El veredicto salta una sola vez por respuesta, no en cada redibujo. */
   const claseSalto = () => { if (!App.comproSalto) return ''; App.comproSalto = false; return ' salta'; };
 
@@ -769,25 +786,17 @@
     const costo = E.textoPlan(plan);
     const cuando = x => (x.estado === 'si' ? '<span class="v-bien">Hoy sí</span>' : x.estado === 'justo' ? '<span class="v-ojo">Entra justo</span>' : x.desde ? `Desde ${esc(E.mesCorto(x.desde))} ${x.desde.slice(2, 4)}` : '<span class="v-mal">No</span>');
     const filas = v.planes.map(x => `<tr class="${x.n === plan.n ? 'elegida' : ''}"><td>${x.n === 1 ? '1 pago' : `${x.n} cuotas`}</td><td class="num">${f(x.cuota)}</td><td>${cuando(x)}</td></tr>`).join('');
-    const atraso = (fin, at, etiqueta) => (fin === 'nunca' ? `${etiqueta}: no llegás a cerrar tus deudas.` : at >= 1 ? `${etiqueta}: terminás tus deudas en ${E.mesAnio(fin)}, ${at} ${at === 1 ? 'mes' : 'meses'} más tarde.` : `${etiqueta}: no cambia cuándo terminás tus deudas.`);
-    const siLaCompra = v.atrasoPedido
-      ? `<div class="aviso"><strong>${['si', 'justo'].includes(v.veredicto) ? 'Si la comprás' : 'Si igual la comprás'}</strong><span>${esc(atraso(v.atrasoPedido.fin, v.atrasoPedido.atraso, `En ${plan.n} cuotas`))}</span></div>`
-      : v.siIgual ? `<div class="aviso"><strong>Si igual la comprás</strong><span>${esc(atraso(v.siIgual.fin1, v.siIgual.atraso1, 'En 1 pago'))}</span><span>${esc(atraso(v.siIgual.fin6, v.siIgual.atraso6, 'En 6 cuotas'))}</span></div>` : '';
     return `<section class="veredicto ${k}${claseSalto()}">
         <h3>${esc(v.titulo)}</h3>
         <p>${esc(v.detalle)}</p>
         ${costo ? `<p class="costo">${esc(costo)}</p>` : ''}
       </section>
       ${bloqueConTarjeta(s, p, plan, h)}
-      <section class="bloque">
-        <div class="entre"><h2>¿Es necesario?</h2>${pillClase(a.clase)}</div>
-        <p>${esc(a.motivo)}</p>
-      </section>
+      ${bloqueConsejo(s, p, plan, h, a)}
       <section class="bloque">
         <h2>Cómo te entra</h2>
         <table class="tabla"><thead><tr><th>Forma</th><th>Por mes</th><th>Cuándo</th></tr></thead><tbody>${filas}</tbody></table>
         ${v.siTePagan ? `<p>${esc(v.siTePagan)}</p>` : ''}
-        ${siLaCompra}
         ${v.avisos.map(x => `<p class="ayuda">${esc(x)}</p>`).join('')}
       </section>
       <div class="btns">
@@ -887,7 +896,7 @@
       <button class="btn prim lleno">Guardar</button>
     </form>
     ${bloqueCuenta()}
-    ${bloqueCopia(s)}`);
+    ${bloqueCopia(s)}`, '', { ancha: true });
     cargarAcceso();
   }
 
@@ -918,7 +927,7 @@
       <button class="btn prim lleno">Guardar ajustes</button>
     </form>
     ${bloqueCuenta()}
-    ${bloqueCopia(s)}`);
+    ${bloqueCopia(s)}`, '', { ancha: true });
     cargarAcceso();
   }
 
@@ -1052,7 +1061,7 @@
         const costo = E.textoPlan(plan);
         res = `<section class="veredicto ${k}${claseSalto()}"><h3>${esc(v.titulo)}</h3><p>${esc(v.detalle)}</p>${costo ? `<p class="costo">${esc(costo)}</p>` : ''}</section>
           ${bloqueConTarjeta(s, p, plan, h)}
-          <section class="bloque"><div class="entre"><h2>¿Es necesario?</h2>${pillClase(a.clase)}</div><p>${esc(a.motivo)}</p></section>
+          ${bloqueConsejo(s, p, plan, h, a)}
           <button class="btn lleno" data-a="comproCargar">La compré</button>`;
       }
     }
@@ -1489,6 +1498,11 @@
       const { p, plan } = planDeCompro();
       if (plan.falta) return;
       mutar(s => E.agregarEspera(s, { nombre: p.nombre || 'Compra', monto: plan.total, precio: plan.precio, cuotas: plan.n, interes: plan.interes, valorCuota: plan.interes === 'con' ? plan.cuota : null }, hoy()), 'Queda en espera 48 horas.');
+    },
+    aprenderCompro: d => {
+      const { p } = planDeCompro();
+      if (!p.nombre) return;
+      mutar(s => { E.aprender(s, p.nombre, d.clase); E.tocar(s); }, `Listo: ${p.nombre} es ${CLASES[d.clase].t.toLowerCase()}. Me lo acuerdo.`, { deshacer: false });
     },
     comproCargar: () => {
       const { p, plan } = planDeCompro();

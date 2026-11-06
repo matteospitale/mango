@@ -262,6 +262,13 @@ ol.pasos { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
   .hoja { align-items: center; padding: 24px 24px 24px 272px; }
   .hoja-panel { max-width: 600px; max-height: 88vh; border-radius: 30px; border: 1px solid var(--borde); box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 30px 60px rgba(0,0,0,.45); padding: 22px 24px 24px; }
   .toast { left: calc(50% + 124px); bottom: 28px; }
+  .hoja-panel.ancha { max-width: 1060px; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); column-gap: 22px; align-items: start; align-content: start; }
+  .hoja-panel.ancha > .hoja-cab { grid-column: 1 / -1; }
+  .hoja-panel.ancha > form { grid-column: 1; grid-row: 2 / span 30; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 16px; align-items: start; }
+  .hoja-panel.ancha > form > :is(h2, p, .btn.prim, .error) { grid-column: 1 / -1; }
+  .hoja-panel.ancha > form > h2 { margin-top: 8px; }
+  .hoja-panel.ancha > form > .btn.mini { justify-self: start; }
+  .hoja-panel.ancha > :not(form):not(.hoja-cab) { grid-column: 2; }
   .inicio.centro { max-width: 420px; margin-inline: auto; }
   body:has(#tabs[hidden]) .app { margin-inline: auto; grid-template-columns: minmax(0, 1fr); }
 }

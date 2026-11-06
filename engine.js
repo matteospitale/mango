@@ -561,25 +561,39 @@
   };
 
   /* ---------- ¿Era necesario? ---------- */
+  /* Qué es lo que comprás, por las palabras que usás. El orden importa: gana la primera que coincide. */
+  const R = (palabras, clase, tipo, motivo) => ({ re: new RegExp(`\\b(${palabras})\\b`), clase, tipo, motivo });
   const REGLAS = [
-    { re: /\b(rappi|pedidos ?ya|uber ?eats|delivery|glovo)\b/, clase: 'innecesario', tipo: 'delivery', motivo: 'Es delivery: había comida en casa.' },
-    { re: /\b(temu|shein|aliexpress)\b/, clase: 'innecesario', tipo: 'online', motivo: 'Compra online de impulso. Nada de esto era urgente.' },
-    { re: /\b(kiosco|starbucks|cafe|cafeteria|alfajor|golosinas?|havanna|bonafide)\b/, clase: 'innecesario', tipo: 'hormiga', motivo: 'Gasto hormiga: poco cada vez, mucho a fin de mes.' },
-    { re: /\b(xbox|playstation|ps[345]|nintendo|switch|steam|fortnite|juegos?|videojuegos?|consola)\b/, clase: 'innecesario', tipo: 'juegos', motivo: 'Es entretenimiento: si no te sobra, puede esperar.' },
-    { re: /\b(tv|televisor|tele|heladera|lavarropas|aire|notebook|iphone|celular nuevo|tablet|kindle|silla|parlante|auriculares)\b/, clase: 'innecesario', tipo: 'bien', motivo: 'Es un bien caro. Si el que tenés funciona, hoy puede esperar.' },
-    { re: /\b(farmacia|remedios?|medicamentos?|medico|psicolog[oa]|dentista|odontolog[oa]|oculista|prepaga|osde|swiss|analisis|estudios?|guardia|lentes)\b/, clase: 'necesario', tipo: 'salud', motivo: 'Es salud. Eso no se recorta.' },
-    { re: /\b(colectivo|subte|sube|tren|nafta|ypf|shell|axion)\b/, clase: 'necesario', tipo: 'transporte', motivo: 'Transporte de todos los días.' },
-    { re: /\b(alquiler|expensas|luz|gas|agua|internet|seguro|monotributo|impuesto)\b/, clase: 'necesario', tipo: 'servicio', motivo: 'Es un servicio o una obligación.' },
-    { re: /\b(peluqueria|barberia)\b/, clase: 'necesario', tipo: 'cuidado', motivo: 'Cuidado personal básico.' },
-    { re: /\b(uber|didi|cabify|taxi|remis)\b/, clase: 'gustito', tipo: 'auto', motivo: 'Si había colectivo o subte, se podía evitar.' },
-    { re: /\b(mc|mcdonalds?|burger|mostaza|kfc|wendys|subway|pizzeria|pizza|sushi|empanadas?|hamburguesa|restaurant|parrilla|bar|helado|grido)\b/, clase: 'gustito', tipo: 'comida', motivo: 'Comer afuera es un gusto. Vale si no se repite mucho.' },
-    { re: /\b(cine|cinemark|hoyts|recital|entradas?|movistar arena|alpogo|teatro|cancha|abono)\b/, clase: 'gustito', tipo: 'salidas', motivo: 'Salida o evento. Es un gusto, no una necesidad.' },
-    { re: /\b(ropa|remera|buzo|zapatillas?|jean|pantalon|campera|newsport|dexter|decathlon|nike|adidas)\b/, clase: 'gustito', tipo: 'ropa', motivo: 'Ropa. Salvo que te haga falta de verdad, es un gusto.' },
-    { re: /\b(perfume|maquillaje|crema)\b/, clase: 'gustito', tipo: 'belleza', motivo: 'Es un gusto personal.' },
-    { re: /\b(libros?|yenny|cuspide|comics?|manga)\b/, clase: 'gustito', tipo: 'lectura', motivo: 'Lectura y colección: un gusto.' },
-    { re: /\b(spotify|netflix|hbo|max|disney|youtube|suscripcion)\b/, clase: 'gustito', tipo: 'suscripcion', motivo: 'Suscripción. Revisá si la usás de verdad.' },
-    { re: /\b(super|supermercado|carrefour|coto|jumbo|disco|vea|changomas|almacen|verduleria)\b/, clase: 'gustito', tipo: 'super', motivo: 'Si no era para la casa, fue un gusto.' },
-    { re: /\b(mercado libre|meli|amazon)\b/, clase: 'gustito', tipo: 'online', motivo: 'Depende de qué compraste. Sin más datos, lo tomo como gusto.' }
+    R('rappi|pedidos ?ya|uber ?eats|delivery|glovo|pedido', 'innecesario', 'delivery', 'Es delivery: lo mismo hecho en casa sale bastante menos.'),
+    R('temu|shein|aliexpress|wish', 'innecesario', 'online', 'Compra online de impulso. Nada de esto suele ser urgente.'),
+    R('casino|apuestas?|bet|bplay|codere|betano|bet365|quini|loteria|raspadita', 'innecesario', 'apuestas', 'Son apuestas: plata que casi siempre no vuelve.'),
+    R('puchos?|cigarrillos?|atado|vape|tabaco', 'innecesario', 'tabaco', 'Es un gasto que se repite todos los días y suma mucho.'),
+    R('kiosco|kioscofinca|starbucks|cafe|cafeteria|alfajor|golosinas?|havanna|bonafide|gaseosa|coca|monster|speed|chicles?', 'innecesario', 'hormiga', 'Gasto hormiga: poco cada vez, mucho a fin de mes.'),
+    R('comics?|historietas?|manga|mangas|ivrea|ovni ?press|panini|marvel|dc comics|batman|superman|x-?men|tomo|omnibus|novela grafica', 'gustito', 'comics', 'Es un cómic: lectura y colección, un gusto.'),
+    R('vinilos?|lp|cd|cds|tocadiscos|bandeja|cassette|bandcamp|disqueria', 'gustito', 'musica', 'Es música para coleccionar: un gusto.'),
+    R('funko|figuras?|figura de accion|hot toys|cartas|tcg|magic|yugioh|yu-gi-oh|coleccionables?|lego', 'gustito', 'coleccion', 'Es un coleccionable: un gusto, y de los que se acumulan.'),
+    R('xbox|playstation|ps[345]|nintendo|switch|steam|epic games|fortnite|juegos?|videojuegos?|consola|joystick|zelda|mario|pokemon|kirby|metroid|smash|splatoon|fifa|ea ?fc|efootball|gta|call of duty|cod|minecraft|elden ring|dark souls|god of war|spider ?man|hollow knight|silksong|resident evil|last of us|horizon|assassins?|far cry|battlefield|2k\d*|mortal kombat|street fighter|tekken|halo|forza|gran turismo|cyberpunk|witcher|red dead|hogwarts|diablo|sims|animal crossing|xenoblade|fire emblem|donkey kong|sonic|crash|ps plus|game ?pass|hadouken', 'gustito', 'juegos', 'Es un videojuego: entretenimiento, un gusto.'),
+    R('viajes?|pasajes?|vuelos?|aerolineas|flybondi|jetsmart|avion|micro|plataforma ?10|omnibus|hotel|hostel|airbnb|booking|despegar|almundo|turismo|vacaciones|escapada|excursion', 'gustito', 'viajes', 'Es un viaje: un gusto grande, de los que se planifican.'),
+    R('celular|iphone|samsung|xiaomi|motorola|notebook|laptop|pc|computadora|monitor|teclado|mouse|auriculares|airpods|parlante|jbl|tablet|ipad|kindle|smartwatch|reloj inteligente|apple watch|camara|gopro|placa de video|ssd|disco rigido|memoria|pendrive|cargador|cable|funda|newsan|frávega|fravega|musimundo|garbarino|compumundo', 'gustito', 'tecnologia', 'Es tecnología: si lo que tenés anda, puede esperar. Si se te rompió, es otra cosa.'),
+    R('tv|televisor|tele|smart tv|heladera|lavarropas|aire|microondas|cafetera|freidora|colchon|sillon|silla|mueble|escritorio|cama|ventilador|estufa', 'gustito', 'hogar', 'Es algo para la casa. Si reemplaza algo roto, es necesario; si no, puede esperar.'),
+    R('farmacia|remedios?|medicamentos?|medico|psicolog[oa]|terapia|dentista|odontolog[oa]|oculista|prepaga|osde|swiss|analisis|estudios?|guardia|lentes|anteojos', 'necesario', 'salud', 'Es salud. Eso no se recorta.'),
+    R('veterinaria|veterinario|zivals|puppis|alimento|balanceado|piedritas', 'necesario', 'mascotas', 'Es para tu mascota: eso no se recorta.'),
+    R('curso|facultad|universidad|colegio|academia|udemy|coursera|ingles|clases?|apuntes|fotocopias', 'necesario', 'estudio', 'Es formación: suma a futuro.'),
+    R('colectivo|subte|sube|tren|nafta|ypf|shell|axion|peaje|estacionamiento|cochera', 'necesario', 'transporte', 'Transporte de todos los días.'),
+    R('alquiler|expensas|luz|edenor|edesur|epec|gas|ecogas|agua|internet|fibertel|personal|claro|movistar|telefono|seguro|monotributo|impuesto|afip|arca|rentas|patente', 'necesario', 'servicio', 'Es un servicio o una obligación.'),
+    R('peluqueria|barberia', 'necesario', 'cuidado', 'Cuidado personal básico.'),
+    R('uber|didi|cabify|taxi|remis', 'gustito', 'auto', 'Auto por app: si había colectivo, se podía evitar.'),
+    R('birra|cerveza|fernet|vino|vinos|bodega|vinoteca|whisky|gin|tragos?|drinks?|amaretto', 'gustito', 'bebida', 'Es bebida o una salida: un gusto.'),
+    R('mc|mcdonalds?|burger|burgerking|mostaza|kfc|wendys|subway|pizzeria|pizza|sushi|empanadas?|hamburguesas?|gordis|lomitos?|milanesas?|restaurant|resto|parrilla|bar|helados?|grido|pastas|cena|almuerzo|merienda|desayuno|brunch|papanato', 'gustito', 'comida', 'Comer afuera es un gusto. Vale si no se repite mucho.'),
+    R('cine|cinemark|hoyts|showcase|recital|concierto|show|festival|entradas?|movistar arena|alpogo|passline|teatro|boliche|fiesta|cancha|partido|abono', 'gustito', 'salidas', 'Salida o evento. Es un gusto, no una necesidad.'),
+    R('gimnasio|gym|pileta|club|padel|futbol|crossfit|yoga|pilates|suplementos?|proteina|creatina', 'gustito', 'deporte', 'Es deporte: vale la pena si lo usás de verdad.'),
+    R('ropa|remera|buzo|zapatillas?|jean|pantalon|campera|camisa|vestido|medias|newsport|dexter|grid|decathlon|nike|adidas|puma|vans|converse|zara|levis|lacoste|topper|jordan|rossetti', 'gustito', 'ropa', 'Ropa. Salvo que te haga falta de verdad, es un gusto.'),
+    R('perfume|perfumeria|julerias?|maquillaje|crema|skincare', 'gustito', 'belleza', 'Es un gusto personal.'),
+    R('libros?|yenny|cuspide|libreria|emporio', 'gustito', 'lectura', 'Es un libro: un gusto, de los buenos.'),
+    R('regalos?|cumple|cumpleanos|aniversario', 'gustito', 'regalo', 'Es un regalo: está bien, pero ponele un límite.'),
+    R('spotify|netflix|hbo|max|disney|youtube|crunchyroll|prime video|paramount|star plus|chatgpt|icloud|google one|suscripcion', 'gustito', 'suscripcion', 'Suscripción. Revisá si la usás de verdad.'),
+    R('super|supermercado|carrefour|coto|jumbo|disco|vea|changomas|almacen|verduleria|carniceria|chino', 'necesario', 'super', 'Es comida para la casa.'),
+    R('mercado ?libre|meli|amazon', 'gustito', 'online', 'Depende de qué compraste. Sin más datos, lo tomo como gusto.')
   ];
 
   /* Analiza la compra con todo lo que la app sabe: qué es, cuántas veces se repitió, cuánto pesa frente a tu tope y tus deudas, si va en cuotas y a qué hora fue. */
@@ -589,7 +603,7 @@
     if (aprendido) return { clase: aprendido, motivo: 'Así lo marcaste vos la última vez.', fuente: 'aprendido', tipo: null };
     const regla = REGLAS.find(r => r.re.test(clave));
     let clase = regla ? regla.clase : 'gustito';
-    const notas = [regla ? regla.motivo : 'No lo reconozco. Decime qué fue y la próxima lo sé.'];
+    const notas = [regla ? regla.motivo : `No sé qué es "${(nombre || '').trim()}". Decime si lo necesitás o es un gusto y me lo acuerdo.`];
     let fuente = regla ? 'regla' : 'duda';
     const tipo = regla ? regla.tipo : null;
     const subir = () => { if (clase === 'gustito') clase = 'innecesario'; };
@@ -611,7 +625,7 @@
     if (clase !== 'necesario' && deudas > 0 && monto >= tope * 0.5) {
       subir();
       if (fuente === 'duda') fuente = 'duda-cara';
-      notas.push(`Es mucho mientras debés ${E.fmtCorto(deudas)}.`);
+      notas.push(`Pesa mucho mientras debés ${E.fmtCorto(deudas)}.`);
     }
     if (clase !== 'necesario' && cuotas > 1) notas.push(`Te ata ${cuotas} meses.`);
     return { clase, motivo: notas.join(' '), fuente: fuente === 'duda-cara' ? 'duda' : fuente, tipo };
@@ -931,6 +945,101 @@
     const sinReal = E.proximosVencimientos(s, hoy).filter(x => x.sinResumenReal);
     if (sinReal.length) r.avisos.push(`Esta cuenta no incluye lo que todavía no cargaste de ${sinReal.map(x => x.nombre).join(', ')}. Con los montos reales puede cambiar.`);
     return r;
+  };
+
+  /* ---------- Mi consejo: por qué sí o por qué no, y qué hacer en vez de comprar ya ---------- */
+  const TIPS = {
+    juegos: 'Los juegos bajan seguido: fijate si está usado, en oferta en la tienda digital o en un pack. En unas semanas suele estar bastante más barato.',
+    comics: 'Fijate si está en preventa, usado o en una feria de cómics: suele salir menos. Y si es de una colección, terminá lo que ya empezaste antes de sumar otra.',
+    musica: 'Los vinilos importados cambian mucho de precio: compará con disquerías y usados antes de comprar.',
+    coleccion: 'Las colecciones no tienen fin: decidí cuánto querés gastar por mes en esto y no te pases.',
+    tecnologia: 'Compará en dos o tres lugares y mirá si las cuotas son sin interés de verdad (que el total sea igual al precio). Los modelos del año pasado bajan mucho.',
+    hogar: 'Compará precios y esperá un evento de descuentos si no es urgente.',
+    viajes: 'Los pasajes suben cerca de la fecha: si el viaje es seguro, sacalos con tiempo. Si no es seguro, no lo pagues todavía.',
+    ropa: 'La ropa baja en las liquidaciones de cambio de temporada. Si no la necesitás ya, esperá a esas fechas.',
+    online: 'Dejala en el carrito 48 horas. Si después de eso la seguís queriendo, es más que un impulso.',
+    delivery: 'Si es por hambre, hoy hay algo en casa. Guardá el delivery para un día que lo disfrutes.',
+    comida: 'Si querés salir igual, elegí un lugar más barato o compartí.',
+    bebida: 'Comprar para tomar en casa sale mucho menos que en un bar.',
+    salidas: 'Fijate si hay promo con alguna de tus tarjetas o un día más barato.',
+    auto: 'Si es de noche o llueve, vale. Si no, el colectivo te ahorra casi todo.',
+    lectura: 'Fijate si está usado o en digital: suele salir mucho menos.',
+    suscripcion: 'Si no la usaste el último mes, dala de baja: siempre podés volver.',
+    deporte: 'Si es una cuota, pagala solo si fuiste el mes pasado.',
+    regalo: 'Algo hecho por vos o una salida juntos también vale.',
+    apuestas: 'Lo mejor es no empezar: ponele un tope o bloqueá la app.'
+  };
+  E.consejoCompra = (s, { nombre, plan, medio = null }, hoy = E.hoyISO()) => {
+    const m0 = ymDe(hoy), n = Math.max(1, plan.n || 1), total = plan.total, cuota = n > 1 ? plan.cuota : plan.total;
+    const regla = REGLAS.find(r => r.re.test(normalizar(nombre || '')));
+    const puntos = [];
+    const ing = E.ingresoPrudente(s, hoy).monto;
+    const carga = ym => suma(s.tarjetas, t => E.resumen(s, t.id, ym, hoy).restante);
+    let porque = null;
+
+    /* Tus deudas: cuánto te corre la fecha en que terminás. */
+    const deudas = E.totalDeudas(s).ars;
+    if (deudas >= 1) {
+      const fin = E.mesSinDeudas(E.proyectar(s, { hoy }));
+      const con = E.mesSinDeudas(E.proyectar(s, { hoy, plan: { n, cuota, desde: 1 } }));
+      let texto = `Debés ${E.fmtCorto(deudas)}.`, tono = 'neutro';
+      if (fin === 'nunca') { texto += ' Con lo que te entra hoy no llegás a cerrarlas: cada compra lo hace más largo.'; tono = 'mal'; porque = porque || 'con lo que te entra hoy todavía no cerrás tus deudas'; }
+      else if (fin) {
+        const at = con === 'nunca' ? null : difMeses(fin, con);
+        if (at == null) { texto += ` Hoy terminás en ${mesAnio(fin)}. Con esta compra ya no llegás a cerrarlas.`; tono = 'mal'; porque = porque || 'con esto ya no llegás a cerrar tus deudas'; }
+        else if (at >= 1) { texto += ` Hoy terminás en ${mesAnio(fin)}. Con esta compra, en ${mesAnio(con)}: ${at} ${at === 1 ? 'mes' : 'meses'} más.`; tono = 'ojo'; porque = porque || `te corre ${at} ${at === 1 ? 'mes' : 'meses'} salir de tus deudas`; }
+        else { texto += fin > m0 ? ` Terminás igual en ${mesAnio(fin)}: esta compra no te las corre, pero hasta entonces lo que te sobra va a deudas.` : ` Terminás igual en ${mesAnio(fin)}: esta compra no te las corre.`; tono = 'bien'; }
+      }
+      puntos.push({ titulo: 'Tus deudas', texto, tono });
+    }
+
+    /* Esperar: cuándo se liberan cuotas para que esta entre sin subir lo que pagás de tarjeta. */
+    if (s.tarjetas.length) {
+      const P = sumarMes(m0, 1), base = Math.max(1, carga(P));
+      let W = null;
+      for (let i = 1; i <= 9 && !W; i++) {
+        const ym = sumarMes(m0, i);
+        let ok = true;
+        for (let k = 0; k < n; k++) if (carga(sumarMes(ym, k)) + cuota > base + 1) { ok = false; break; }
+        if (ok) W = ym;
+      }
+      const terminan = ym => s.compras.filter(c => {
+        const tj = E.tarjeta(s, c.medio);
+        if (!tj || c.cuotas < 2) return false;
+        const ult = sumarMes(c.primerVence || E.primerVencimiento(tj, c.fecha), c.cuotas - 1);
+        return ult >= P && ult < ym;
+      }).map(c => c.nombre);
+      if (W === P) puntos.push({ titulo: 'Tus tarjetas', texto: `${n > 1 ? 'Las cuotas entran' : 'Entra'} sin que tus tarjetas pasen de los ${E.fmtCorto(base)} que vas a pagar en ${mesNombre(P)}.`, tono: 'bien' });
+      else if (W) {
+        const nombres = [...new Set(terminan(W))].slice(0, 3);
+        puntos.push({ titulo: 'Bancá un poco', texto: `Si esperás a que ${n > 1 ? 'las cuotas arranquen' : 'se pague'} en ${mesNombre(W)}${nombres.length ? `, ya terminaste ${nombres.join(', ')}` : ''} y tus tarjetas no pasan de los ${E.fmtCorto(base)} de ${mesNombre(P)}. Comprándola hoy, ${mesNombre(P)} sube a ${E.fmtCorto(base + cuota)}.`, tono: 'ojo' });
+        porque = porque || `si esperás a ${mesNombre(W)}, te entra sin subir tus tarjetas`;
+      } else {
+        puntos.push({ titulo: 'Tus tarjetas', texto: `En los próximos meses no se libera lo suficiente: ${n > 1 ? 'cada cuota' : 'esto'} te suma ${E.fmtCorto(cuota)} arriba de los ${E.fmtCorto(base)} que ya pagás.`, tono: 'mal' });
+      }
+
+      /* Con qué tarjeta conviene. */
+      const ops = s.tarjetas.map(t => {
+        const c = E.cuandoPagas(s, t.id, n, cuota, hoy);
+        return { t, c, dias: difDias(hoy, c.primero.vence), pico: Math.max(...c.meses.map(m => carga(m.ym) + cuota)) };
+      }).sort((a, b) => a.pico - b.pico || b.dias - a.dias);
+      const mejor = ops[0], elegida = medio ? ops.find(o => o.t.id === medio) : null;
+      if (mejor && elegida && mejor.t.id !== elegida.t.id && (mejor.pico < elegida.pico - 1000 || mejor.dias > elegida.dias + 7)) {
+        puntos.push({ titulo: 'Mejor con otra tarjeta', texto: `Con ${mejor.t.nombre} la primera cuota la pagás el ${mejor.c.primero.texto} (en ${mejor.dias} días) en vez del ${elegida.c.primero.texto}${mejor.pico < elegida.pico - 1000 ? `, y tu mes más pesado de tarjetas queda en ${E.fmtCorto(mejor.pico)} en vez de ${E.fmtCorto(elegida.pico)}` : ''}.`, tono: 'ojo' });
+      } else if (mejor && !elegida) {
+        puntos.push({ titulo: 'Con qué tarjeta', texto: `Si la hacés, con ${mejor.t.nombre}: la primera cuota la pagás el ${mejor.c.primero.texto}, en ${mejor.dias} días.`, tono: 'neutro' });
+      }
+    }
+
+    /* Cuánto pesa frente a lo que te entra. */
+    if (ing >= 1) {
+      const pct = Math.round((total / ing) * 100);
+      puntos.push({ titulo: 'Cuánto pesa', texto: `Es el ${pct}% de lo que te entra por mes${n > 1 ? `; cada cuota, el ${Math.round((cuota / ing) * 100)}%` : ''}.`, tono: pct >= 30 ? 'ojo' : 'neutro' });
+    }
+
+    if (regla && TIPS[regla.tipo]) puntos.push({ titulo: 'Un tip', texto: TIPS[regla.tipo], tono: 'neutro' });
+    const resumen = porque ? `Ahora no: ${porque}.` : 'Si la querés, te entra sin complicarte.';
+    return { resumen, puntos, tipo: regla ? regla.tipo : null };
   };
 
   /* ---------- Repartir lo que entra ---------- */
