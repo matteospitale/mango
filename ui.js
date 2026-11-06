@@ -119,15 +119,90 @@
   const esIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const instalada = () => window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
 
-  /* El nombre sale de la cuenta de Google de cada persona. La frase, de sus números. */
+  /* ---------- Resúmenes que me pasaste en fotos ----------
+     Se ofrecen una sola vez, en Hoy, y no se guarda nada hasta que tocás Cargar. */
+  const IMPORTES = [{
+    id: 'bbva-oct26',
+    titulo: 'Tus resúmenes BBVA de octubre',
+    detalle: 'Cerraron el 22/10. El próximo cierre es el 19/11 y vence el 3/12.',
+    ym: '2026-11', cierre: 19,
+    tarjetas: [
+      { buscar: 'master', real: 710797.26, cuotas: [
+        { nombre: 'Jetsmart', cuota: 49729.60, n: 1, de: 2, fecha: '2026-09-30' },
+        { nombre: 'Modo QR Quade', cuota: 26999.68, n: 1, de: 3, fecha: '2026-10-16' }
+      ] },
+      { buscar: 'visa', real: 2075772.84, cuotas: [
+        { nombre: 'Decathlon', cuota: 25133.33, n: 5, de: 6, fecha: '2026-06-06' },
+        { nombre: 'Newsport', cuota: 30000, n: 5, de: 6, fecha: '2026-06-16' },
+        { nombre: 'Plataforma 10', cuota: 74360, n: 1, de: 3, fecha: '2026-09-27' },
+        { nombre: 'Trigital Cines', cuota: 9013.34, n: 1, de: 3, fecha: '2026-09-28' },
+        { nombre: 'Plataforma 10 (2)', cuota: 17256.68, n: 1, de: 3, fecha: '2026-09-30' },
+        { nombre: 'El Emporio Libros', cuota: 59849.70, n: 1, de: 3, fecha: '2026-10-02' }
+      ], fijo: { nombre: 'Plan Peugeot', monto: 486125.19, desde: '2026-12' } }
+    ]
+  }];
+  const buscarTarjeta = (s, clave) => s.tarjetas.find(t => t.id === clave) || s.tarjetas.find(t => E.normalizar(t.nombre).split(/\s+/).includes(clave));
+  const importePendiente = s => IMPORTES.find(im => !((s.config.importados || []).includes(im.id)) && im.tarjetas.every(x => buscarTarjeta(s, x.buscar)));
+  const primeraPalabra = n => E.normalizar(n).split(/[\s(]+/)[0];
+  const yaEstaCuota = (s, medio, q) => s.compras.some(c => c.medio === medio && c.cuotas === q.de && primeraPalabra(c.nombre) === primeraPalabra(q.nombre) && Math.abs(c.monto / c.cuotas - q.cuota) < 2);
+  const avisoImporte = s => {
+    const im = importePendiente(s);
+    return im ? `<div class="aviso azul"><strong>${esc(im.titulo)}</strong><span>Los pasé de tus fotos: totales a pagar, cuotas que siguen y el plan Peugeot. Revisalos antes de cargarlos.</span><button class="link" data-a="verImporte" data-id="${im.id}">Revisar y cargar</button></div>` : '';
+  };
+  function hojaImporte(id) {
+    const s = App.s, im = IMPORTES.find(x => x.id === id);
+    if (!im) return;
+    const bloques = im.tarjetas.map(x => {
+      const t = buscarTarjeta(s, x.buscar);
+      const r = E.resumen(s, t.id, im.ym, hoy());
+      const cuotas = x.cuotas.map(q => {
+        const ya = yaEstaCuota(s, t.id, q);
+        const quedan = q.de - q.n;
+        return `<div class="fila"><span class="izq"><span class="nom">${esc(q.nombre)}</span><span class="chico">Cuota ${q.n} de ${q.de} en este resumen · ${quedan === 1 ? 'queda 1' : `quedan ${quedan}`}${ya ? ' · ya la tenías, no la repito' : ''}</span></span><span class="der"><span class="num">${f(q.cuota)}</span></span></div>`;
+      }).join('');
+      const fijo = x.fijo ? `<label class="check"><input type="checkbox" name="imp-fijo-${x.buscar}" checked> ${esc(x.fijo.nombre)} todos los meses: ${f(x.fijo.monto)}</label><p class="ayuda">Aparece dos veces en este resumen (27/9 y 21/10). Si no es mensual, destildalo.</p>` : '';
+      return `<section class="bloque">
+          <div class="entre"><h2>${punto(t.id)}${esc(t.nombre)}</h2><span class="num">${f(x.real)}</span></div>
+          <p class="chico">Total a pagar de ${E.mesNombre(im.ym)}${r.real != null ? ` (hoy tenías cargado ${f(r.real)})` : ''}.</p>
+          <div class="lista">${cuotas}</div>
+          ${fijo}
+        </section>`;
+    }).join('');
+    abrirHoja(im.titulo, `<form data-form="importe" data-id="${im.id}">
+        ${bloques}
+        <p class="ayuda">También dejo el cierre de las dos en el día ${im.cierre}. Si ya pagaste alguno de estos resúmenes, marcalo después en Tarjetas.</p>
+        <button class="btn prim lleno">Cargar</button>
+        <button type="button" class="btn lleno" data-a="descartarImporte" data-id="${im.id}">No cargar</button>
+      </form>`, im.detalle);
+  }
+  const aplicarImporte = (s, im, conFijo) => {
+    for (const x of im.tarjetas) {
+      const t = buscarTarjeta(s, x.buscar);
+      E.fijarResumenReal(s, t.id, im.ym, x.real);
+      t.cierre = im.cierre; t.cierreEstimado = false;
+      for (const q of x.cuotas) {
+        if (yaEstaCuota(s, t.id, q)) continue;
+        const a = E.clasificar(s, { nombre: q.nombre, monto: q.cuota * q.de, cuotas: q.de }, q.fecha);
+        s.compras.push({ id: E.uid(), nombre: q.nombre, monto: Math.round(q.cuota * q.de * 100) / 100, cuotas: q.de, medio: t.id, fecha: q.fecha, texto: '', clase: a.clase, motivo: a.motivo, fuente: 'resumen', primerVence: E.sumarMes(im.ym, -(q.n - 1)), pagadas: q.n });
+      }
+      if (x.fijo && conFijo[x.buscar]) {
+        s.fijos = s.fijos || [];
+        const ya = s.fijos.find(y => E.normalizar(y.nombre).includes(primeraPalabra(x.fijo.nombre.split(' ').pop())));
+        if (ya) { ya.monto = x.fijo.monto; ya.medio = t.id; ya.activo = true; }
+        else s.fijos.push({ id: E.uid(), nombre: x.fijo.nombre, monto: x.fijo.monto, medio: t.id, desde: x.fijo.desde, activo: true });
+      }
+    }
+    s.config.importados = [...(s.config.importados || []), im.id];
+    E.tocar(s);
+  };
+
+  /* Arriba, la fecha y la frase del día en pills de vidrio. La frase sale de tus números. */
   const saludo = (s, h) => {
-    const nombre = App.usuario && App.usuario.displayName ? App.usuario.displayName.trim().split(/\s+/)[0] : '';
     const fr = E.fraseDelDia(s, h, { hora: horaAhora() });
     return `<header class="cab saludo">
         <div>
-          <h1>Hola${nombre ? `, ${esc(nombre)}` : ''}</h1>
-          <p class="frase ${fr.tono}">${esc(fr.texto)}</p>
-          <p class="chico tercero">${esc(E.fechaLarga(h))}</p>
+          <span class="pill vidrio">${esc(E.fechaLarga(h))}</span>
+          <p class="pill vidrio frase ${fr.tono}">${esc(fr.texto)}</p>
         </div>
         <button class="icono" data-a="ajustes" aria-label="Ajustes">${icono('ajustes')}</button>
       </header>`;
@@ -148,14 +223,16 @@
     const claseBarra = cv.estado === 'mal' ? 'mal' : cv.estado === 'ojo' ? 'ojo' : '';
     const pillCv = cv.estado === 'bien' ? pill('bien', cv.etiqueta, '✓') : cv.estado === 'ojo' ? pill('ojo', cv.etiqueta, '!') : pill('mal', cv.etiqueta, '×');
     const avisos = [];
+    const sinTope = E.topeEsAuto(s) && p.tope < 1;
     if (App.errorGuardado) avisos.push(`<div class="aviso mal"><strong>No se pudo guardar.</strong> Revisá tu conexión y volvé a intentar.</div>`);
+    avisos.push(avisoImporte(s));
     return `
       ${saludo(s, h)}
       ${avisos.join('')}
       <section class="heroe">
         <span class="heroe-et">Hoy podés gastar</span>
         <span class="heroe-num num" data-contar="${Math.round(p.hoy)}">${f(p.hoy)}</span>
-        <span class="heroe-pie">${f(p.mes)} en el mes</span>
+        <span class="heroe-pie">${sinTope ? 'Falta saber cuánto cobrás' : `${f(p.mes)} en el mes`}</span>
       </section>
       <nav class="accesos" aria-label="Accesos rápidos">
         <button class="acceso" data-a="ir" data-tab="cargar"><span class="aro">${icono('cargar')}</span>Cargar</button>
@@ -169,11 +246,16 @@
           <button class="fila" data-a="ir" data-tab="deudas" data-sub="deudas"><span class="izq"><span class="nom">Debés</span><span class="chico">${pieDebes}</span></span><span class="der"><span class="num num-fila v-mal">${f(d.ars)}</span></span></button>
         </div>
       </section>
-      <section class="bloque">
+      ${sinTope ? `<section class="bloque">
+        <div class="entre"><h2>Cómo vas</h2>${pill('ojo', 'Falta tu tope', '!')}</div>
+        <p>No hace falta que sepas tu tope: lo calculo yo con lo que te entra por mes, menos tarjetas y mensuales. Solo decime cuánto cobrás.</p>
+        <div class="btns"><button class="btn mini" data-a="ajustes">Poner lo que cobro</button><button class="btn mini" data-a="cobre">Anotar un cobro</button></div>
+      </section>` : `<section class="bloque">
         <div class="entre"><h2>Cómo vas</h2>${pillCv}</div>
         <div class="barra ${claseBarra}" role="img" aria-label="Usaste ${Math.round(cv.usado * 100)}% del tope, llevás ${Math.round(cv.ritmo * 100)}% del mes"><span style="width:${Math.min(100, cv.usado * 100).toFixed(1)}%"></span><i style="left:${(cv.ritmo * 100).toFixed(1)}%"></i></div>
         <p>${esc(cv.frase)}${cv.pctNoNecesario != null ? ` El ${cv.pctNoNecesario}% de tus compras no era necesario.` : ''}</p>
-      </section>
+        ${E.topeEsAuto(s) ? `<p class="ayuda">Tu tope de ${f(p.tope)} es automático: sale de lo que te entra por mes menos tarjetas. Lo cambiás en Ajustes.</p>` : ''}
+      </section>`}
       <section class="bloque">
         <div class="entre"><h2>Próximo pago</h2><button class="link chico" data-a="ir" data-tab="tarjetas">Ver tarjetas</button></div>
         ${prox.length ? `<div class="lista">${prox.map(r => filaPago(r)).join('')}</div>` : '<p class="sub">No hay pagos cargados.</p>'}
@@ -273,7 +355,7 @@
     const compras = [...s.compras].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 60);
     const grupos = [];
     for (const c of compras) {
-      const titulo = c.fecha === h ? 'Hoy' : c.fecha === E.sumarDias(h, -1) ? 'Ayer' : (c.fuente === 'notion' ? 'Cuotas que traje de tu Notion' : E.fechaLarga(c.fecha));
+      const titulo = c.fecha === h ? 'Hoy' : c.fecha === E.sumarDias(h, -1) ? 'Ayer' : (c.fuente === 'notion' ? 'Cuotas que traje de tu Notion' : c.fuente === 'resumen' ? 'Cuotas de tus resúmenes' : E.fechaLarga(c.fecha));
       let g = grupos[grupos.length - 1];
       if (!g || g.titulo !== titulo) { g = { titulo, items: [] }; grupos.push(g); }
       g.items.push(c);
@@ -572,6 +654,31 @@
     ? '<p class="error">Decime cuánto sale cada cuota.</p>'
     : `<p class="error">Decime cuánto sale. Por ejemplo: ${ejemplo}</p>`);
 
+  /* Si escribís con qué tarjeta, te digo cuándo cierra, cuándo pagás la primera cuota y cómo quedan esos resúmenes. */
+  const bloqueConTarjeta = (s, p, plan, h) => {
+    if (!p.medio || !E.esTarjeta(s, p.medio)) {
+      if (!s.tarjetas.length || (p.medio && !E.esTarjeta(s, p.medio))) return '';
+      const ej = `${(p.nombre || 'zelda').toLowerCase()} ${Math.round(plan.precio || plan.total || 164000)}${plan.n > 1 ? ` ${plan.n}c` : ''} ${s.tarjetas[0].nombre.toLowerCase()}`;
+      return `<p class="ayuda">Sumá la tarjeta al final (por ejemplo: ${esc(ej)}) y te digo cuándo pagás la primera cuota.</p>`;
+    }
+    const n = plan.n, cuota = plan.cuota || plan.total;
+    const c = E.cuandoPagas(s, p.medio, n, cuota, h);
+    if (!c) return '';
+    const mes = ym => E.mesNombre(ym);
+    const frase = n > 1
+      ? `La primera cuota de ${f(cuota)} la pagás el ${c.primero.texto}, con el resumen de ${mes(c.primero.ym)}. La última, en ${E.mesAnio(c.ultimo.ym)}.`
+      : `La pagás el ${c.primero.texto}, con el resumen de ${mes(c.primero.ym)}.`;
+    const filas = c.meses.slice(0, 6).map((m, i) => `<div class="fila"><span class="izq"><span class="nom">${n > 1 ? `Cuota ${i + 1} · ` : ''}${esc(mes(m.ym))}</span><span class="chico">Vence ${esc(m.texto)} · ${m.antes >= 1 ? `ya tenías ${f(m.antes)}` : 'no tenías nada'}${m.sinReal && m.antes >= 1 ? ' (sin resumen real)' : ''}</span></span><span class="der"><span class="num">${f(m.con)}</span></span></div>`).join('');
+    const mas = c.meses.length > 6 ? `<p class="chico">Y ${c.meses.length - 6} cuotas más, hasta ${esc(E.mesAnio(c.ultimo.ym))}.</p>` : '';
+    return `<section class="bloque">
+        <div class="entre"><h2>${punto(p.medio)}Con ${esc(c.tarjeta.nombre)}</h2>${pill('azul', `Cierra el ${E.fechaCorta(c.cierre)}`)}</div>
+        <p>${esc(frase)}</p>
+        <div class="lista">${filas}</div>
+        ${mas}
+        ${c.cierreEstimado ? '<p class="ayuda">El día de cierre es estimado. Si lo sabés, corregilo en Ajustes.</p>' : ''}
+      </section>`;
+  };
+
   /* El veredicto salta una sola vez por respuesta, no en cada redibujo. */
   const claseSalto = () => { if (!App.comproSalto) return ''; App.comproSalto = false; return ' salta'; };
 
@@ -609,6 +716,7 @@
         <p>${esc(v.detalle)}</p>
         ${costo ? `<p class="costo">${esc(costo)}</p>` : ''}
       </section>
+      ${bloqueConTarjeta(s, p, plan, h)}
       <section class="bloque">
         <div class="entre"><h2>¿Es necesario?</h2>${pillClase(a.clase)}</div>
         <p>${esc(a.motivo)}</p>
@@ -721,13 +829,21 @@
     cargarAcceso();
   }
 
+  /* Cómo sale el tope automático, con tus números. */
+  const textoTopeAuto = ta => {
+    if (ta.ingreso < 1) return 'Si no sabés cuál poner, dejalo vacío y lo calculo yo. Para eso necesito saber cuánto te entra por mes: cargalo abajo o anotá lo que cobrás en Entró plata.';
+    const deudas = ta.hayDeudas ? `el ${Math.round(ta.pct * 100)}% es para vivir y el resto va a deudas` : `el ${Math.round(ta.pct * 100)}% es para vivir y el resto queda de colchón`;
+    return `Dejalo vacío y lo calculo yo: te entran ${f(ta.ingreso)} por mes, ${f(ta.tarjetas)} ya están atados a cuotas y mensuales de tarjeta${ta.fijos >= 1 ? `, ${f(ta.fijos)} a otros mensuales` : ''}. De lo que queda, ${deudas}. Todo lo que comprás cuenta acá, aunque sea con tarjeta.`;
+  };
+
   function hojaAjustes() {
     if (B()) { hojaAjustesBasico(); return; }
     const s = App.s, h = hoy(), ing = E.ingresoPrudente(s, h);
     const auto = E.ingresoPrudente({ ...s, config: { ...s.config, ingresoManual: null } }, h);
+    const ta = E.topeAuto(s, h);
     abrirHoja('Ajustes', `<form data-form="ajustes">
       ${campo('a-caja', '¿Cuánta plata tenés ahora?', redondo(E.saldoCaja(s)), { modo: 'decimal', ayuda: 'Sumá efectivo, banco y billeteras.' })}
-      ${campo('a-tope', 'Tope de gasto por mes', s.config.tope, { modo: 'decimal', ayuda: 'Todo lo que comprás cuenta acá, aunque sea con tarjeta.' })}
+      ${campo('a-tope', 'Tope de gasto por mes', E.topeEsAuto(s) ? '' : s.config.tope, { modo: 'decimal', ph: ta.monto >= 1 ? `Automático: ${f(ta.monto)}` : 'Automático', ayuda: textoTopeAuto(ta) })}
       ${campo('a-blue', 'Dólar blue', s.config.tcManual == null ? '' : s.config.tcManual, { modo: 'decimal', ph: s.config.blue ? `Automático: ${f(s.config.blue.venta)}` : 'Automático', ayuda: `Lo traigo solo, a precio de venta: es lo que pagarías para comprar esos dólares. Se usa para tus deudas en dólares (${esc(textoBlue(s))}). Si ponés un número, queda fijo.` })}
       ${campo('a-tc', 'Dólar de tus comisiones', s.config.tc, { modo: 'decimal', ayuda: 'Este lo manejás vos, porque no te pagan al blue. Solo se usa para estimar comisiones.' })}
       ${campo('a-ingreso', 'Lo que te entra por mes', s.config.ingresoManual == null ? '' : s.config.ingresoManual, { modo: 'decimal', ph: `Automático: ${f(auto.monto)}`, ayuda: `Es el promedio de lo que de verdad cobraste en los últimos 3 meses cerrados (${auto.meses.map(m => `${E.mesCorto(m.ym)} ${fc(m.monto)}`).join(', ')}), sin contar lo que te deben. Con esto calculo cuándo terminás tus deudas y si te entran cuotas. Dejalo vacío para que sea automático.` })}
@@ -756,6 +872,7 @@
     return `
       ${saludo(s, h)}
       ${App.errorGuardado ? '<div class="aviso mal"><strong>No se pudo guardar.</strong> Revisá tu conexión y volvé a intentar.</div>' : ''}
+      ${avisoImporte(s)}
       <section class="heroe">
         <span class="heroe-et">Tengo</span>
         <span class="heroe-num num" data-contar="${Math.round(r.tengo)}">${f(r.tengo)}</span>
@@ -872,6 +989,7 @@
         const a = E.clasificar(s, { nombre: p.nombre || 'Compra', monto: plan.total, cuotas: plan.n }, h, { hora: horaAhora() });
         const costo = E.textoPlan(plan);
         res = `<section class="veredicto ${k}${claseSalto()}"><h3>${esc(v.titulo)}</h3><p>${esc(v.detalle)}</p>${costo ? `<p class="costo">${esc(costo)}</p>` : ''}</section>
+          ${bloqueConTarjeta(s, p, plan, h)}
           <section class="bloque"><div class="entre"><h2>¿Es necesario?</h2>${pillClase(a.clase)}</div><p>${esc(a.motivo)}</p></section>
           <button class="btn lleno" data-a="comproCargar">La compré</button>`;
       }
@@ -1133,6 +1251,8 @@
     contarHeroe();
     traerBlue();
   }
+  /* El teclado solo se abre cuando tocás un campo: si se abre solo, el fondo se corre y la pantalla se desarma. */
+  const cerrarTeclado = () => { const a = document.activeElement; if (a && a.blur && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) a.blur(); };
   const ir = (tab, sub) => {
     if (tab !== App.tab) App.entrar = true;
     App.tab = tab;
@@ -1140,14 +1260,15 @@
     if (location.hash.slice(1) !== tab) { try { history.replaceState(null, '', '#' + tab); } catch (e) { /* sin historial */ } }
     render();
     window.scrollTo(0, 0);
-    if (tab === 'cargar') { const i = $('cargar-texto'); if (i) i.focus(); }
   };
 
   /* ---------- Acciones ---------- */
   const A = {
     cerrar: cerrarHoja,
+    verImporte: d => hojaImporte(d.id),
+    descartarImporte: d => { cerrarHoja(); mutar(s => { s.config.importados = [...(s.config.importados || []), d.id]; E.tocar(s); }, 'Listo, no los cargo.'); },
     ir: d => { if (d.tab === 'repartir') App.rep.real = false; ir(d.tab, d.sub); },
-    entro: () => { App.rep.real = true; App.rep.origen = null; ir('repartir'); const i = $('rep-monto'); if (i) i.focus(); },
+    entro: () => { App.rep.real = true; App.rep.origen = null; ir('repartir'); },
     sub: d => { App.sub = d.sub; render(); },
     toggle: d => { if (App.abiertos.has(d.id)) App.abiertos.delete(d.id); else App.abiertos.add(d.id); render(); },
     ajustes: hojaAjustes,
@@ -1230,8 +1351,6 @@
       piezas.push(alias);
       App.texto = piezas.join(' ');
       render();
-      const i = $('cargar-texto');
-      if (i) i.focus();
     },
     compra: d => hojaCompra(d.id),
     borrarCompra: d => { cerrarHoja(); mutar(s => E.borrarCompra(s, d.id), 'Compra borrada.'); },
@@ -1262,7 +1381,7 @@
       <button class="btn prim lleno">Agregar</button></form>`),
     /* Cobros */
     cobro: d => hojaCobro(d.id),
-    cobre: () => { App.rep.real = true; App.rep.origen = 'trabajo'; ir('repartir'); const i = $('rep-monto'); if (i) i.focus(); },
+    cobre: () => { App.rep.real = true; App.rep.origen = 'trabajo'; ir('repartir'); },
     sumarCobro: () => abrirHoja('Sumar a lo que te deben', `<form data-form="sumarCobro">
       ${campo('sc-concepto', '¿Qué es?', '', { ph: 'Aguinaldo, bono…' })}
       ${campo('sc-monto', '¿Cuánto?', '', { modo: 'decimal' })}
@@ -1399,8 +1518,7 @@
         const n = p.nombre, m = p.monto;
         App.texto = '';
         mutar(st => E.agregarCompra(st, { nombre: n, monto: m, cuotas, medio, fecha: hoy(), clase: a.clase, motivo: a.motivo, fuente: a.fuente }), `${n}: ${f(m)} guardado.`);
-        const i = $('cargar-texto');
-        if (i) i.focus();
+        cerrarTeclado();
         return;
       }
       if (!p.ok) { const i = $('cargar-texto'); if (i) i.focus(); toast(p.error || `Falta ${p.faltan.join(', ')}.`); return; }
@@ -1408,8 +1526,7 @@
       const nombre = p.nombre, monto = p.monto;
       App.texto = '';
       mutar(st => E.agregarCompra(st, { nombre, monto, cuotas: p.cuotas, medio: p.medio, fecha: hoy(), clase: a.clase, motivo: a.motivo, fuente: a.fuente }), `${nombre}: ${f(monto)} guardado.`);
-      const i = $('cargar-texto');
-      if (i) i.focus();
+      cerrarTeclado();
     },
     editarCompra: (form, val) => {
       const id = form.dataset.id, c = App.s.compras.find(x => x.id === id);
@@ -1513,9 +1630,17 @@
       mutar(s => E.sumarCobro(s, { concepto, monto, vence: val('sc-vence') || hoy(), estado: val('sc-estado') }), 'Sumado a lo que te deben.');
     },
     compro: () => { App.comproHecho = true; App.comproSalto = true; render(); const el = document.querySelector('.veredicto'); if (el) el.scrollIntoView({ block: 'nearest' }); },
+    importe: form => {
+      const im = IMPORTES.find(x => x.id === form.dataset.id);
+      if (!im) return;
+      const conFijo = {};
+      im.tarjetas.forEach(x => { const el = form.elements[`imp-fijo-${x.buscar}`]; conFijo[x.buscar] = !!(el && el.checked); });
+      cerrarHoja();
+      mutar(s => aplicarImporte(s, im, conFijo), 'Resúmenes cargados.');
+    },
     ajustes: (form, val) => {
-      const s0 = App.s, caja = E.parsearMonto(val('a-caja')), tope = E.parsearMonto(val('a-tope')), tc = E.parsearMonto(val('a-tc'));
-      if (caja == null || !tope || !tc) { toast('Revisá tu plata, el tope y el dólar de comisiones.'); return; }
+      const s0 = App.s, caja = E.parsearMonto(val('a-caja')), topeTxt = val('a-tope').trim(), tope = topeTxt ? E.parsearMonto(topeTxt) : null, tc = E.parsearMonto(val('a-tc'));
+      if (caja == null || (topeTxt && !tope) || !tc) { toast('Revisá tu plata, el tope y el dólar de comisiones.'); return; }
       const ingTxt = val('a-ingreso').trim(), blueTxt = val('a-blue').trim();
       const blue = blueTxt ? E.parsearMonto(blueTxt) : null;
       if (blueTxt && !blue) { toast('Revisá el dólar blue.'); return; }
@@ -1527,7 +1652,7 @@
       cerrarHoja();
       mutar(s => {
         E.ajustarCaja(s, caja, hoy());
-        s.config.tope = tope;
+        s.config.tope = tope || null;
         if (tc !== s.config.tc) { s.config.tc = tc; s.config.tcFecha = hoy(); }
         s.config.tcManual = blue;
         s.config.ingresoManual = valores.ing;

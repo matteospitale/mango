@@ -274,6 +274,20 @@
     };
   };
 
+  /* Si comprás hoy con esta tarjeta: cuándo cierra, cuándo pagás la primera cuota y en qué meses caen las demás. */
+  E.cuandoPagas = (s, cardId, cuotas = 1, cuota = 0, hoy = E.hoyISO()) => {
+    const t = E.tarjeta(s, cardId);
+    if (!t) return null;
+    const { d } = partes(hoy);
+    const cierre = fechaEn(d <= t.cierre ? ymDe(hoy) : sumarMes(ymDe(hoy), 1), t.cierre);
+    const primero = E.primerVencimiento(t, hoy);
+    const meses = Array.from({ length: Math.max(1, cuotas) }, (_, i) => {
+      const r = E.resumen(s, cardId, sumarMes(primero, i), hoy);
+      return { ym: r.ym, vence: r.vence, texto: E.textoVence(r), antes: r.restante, con: r.restante + cuota, sinReal: r.sinResumenReal };
+    });
+    return { tarjeta: t, cierre, cierreEstimado: !!t.cierreEstimado, primero: meses[0], meses, ultimo: meses[meses.length - 1] };
+  };
+
   E.textoVence = r => (r.venceHasta ? `${partes(r.vence).d} al ${fechaCorta(r.venceHasta)}` : fechaCorta(r.vence));
 
   E.proximosPagos = (s, hoy = E.hoyISO(), meses = 8) => {
@@ -321,7 +335,21 @@
   /* ---------- Gastos del mes ---------- */
   const montoQueCuenta = c => (c.cuotas > 1 ? c.monto / c.cuotas : c.monto);
   E.montoQueCuenta = montoQueCuenta;
-  E.topeMes = s => s.config.tope;
+  /* Tope automático: de lo que te entra por mes saco lo que ya está atado a tarjetas (cuotas y mensuales).
+     De lo que queda, una parte es para vivir y el resto va a deudas. Los mensuales que no son de tarjeta salen del tope. */
+  E.topeAuto = (s, hoy = E.hoyISO()) => {
+    const ing = E.ingresoPrudente(s, hoy);
+    const m0 = ymDe(hoy), meses = [1, 2, 3].map(i => sumarMes(m0, i));
+    const tarjetas = suma(meses, ym => suma(s.tarjetas, t => E.resumen(s, t.id, ym, hoy).cuotasYFijos)) / meses.length;
+    const fijos = suma((s.fijos || []).filter(f => f.activo !== false && f.monto != null && !E.esTarjeta(s, f.medio)), f => f.monto);
+    const hayDeudas = suma(s.deudas || [], d => E.deudaEnARS(s, d)) >= 1;
+    const pct = hayDeudas ? 0.7 : 0.9;
+    const libre = ing.monto - tarjetas - fijos;
+    const monto = ing.monto < 1 ? 0 : Math.max(fijos, Math.floor((fijos + Math.max(0, libre) * pct) / 1000) * 1000);
+    return { monto, ingreso: ing.monto, ingresoManual: ing.manual, tarjetas, fijos, libre, pct, hayDeudas };
+  };
+  E.topeEsAuto = s => !(s.config.tope > 0);
+  E.topeMes = (s, hoy = E.hoyISO()) => (s.config.tope > 0 ? s.config.tope : E.topeAuto(s, hoy).monto);
 
   E.gastoMes = (s, ym) => {
     const compras = s.compras.filter(c => ymDe(c.fecha) === ym);
@@ -331,7 +359,7 @@
   };
 
   E.podes = (s, hoy = E.hoyISO()) => {
-    const ym = ymDe(hoy), tope = E.topeMes(s), g = E.gastoMes(s, ym);
+    const ym = ymDe(hoy), tope = E.topeMes(s, hoy), g = E.gastoMes(s, ym);
     const gastadoHoy = suma(g.lista.filter(c => c.fecha === hoy), montoQueCuenta);
     const caja = E.saldoCaja(s);
     const delMes = s.tarjetas.map(t => E.resumen(s, t.id, ym, hoy));
@@ -695,7 +723,7 @@
     const rs = s.tarjetas.map(t => E.resumen(s, t.id, ym, hoy));
     const tarjetas = suma(rs, r => r.restante);
     const compromisos = suma(rs, r => Math.max(0, r.cuotasYFijos - r.pagado));
-    return { tarjetas, compromisos, salida: Math.max(tarjetas, compromisos + E.topeMes(s)) };
+    return { tarjetas, compromisos, salida: Math.max(tarjetas, compromisos + E.topeMes(s, hoy)) };
   };
 
   E.proyectar = (s, { hoy = E.hoyISO(), extra = 0, meses = 36, plan = null } = {}) => {
