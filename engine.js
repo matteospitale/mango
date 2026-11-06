@@ -110,9 +110,55 @@
     return lista.sort((x, y) => y.palabras.length - x.palabras.length);
   };
 
+  /* Interés: "sin interés", "con interés", "s/i", "c/i". */
+  const buscarInteres = norm => {
+    for (let i = 0; i < norm.length; i++) {
+      if (/^[sc]\/i(nt)?$/.test(norm[i])) return { i, n: 1, interes: norm[i][0] === 's' ? 'sin' : 'con' };
+      if ((norm[i] === 'sin' || norm[i] === 'con') && /^(int|interes|intereses)$/.test(norm[i + 1] || '')) return { i, n: 2, interes: norm[i] };
+    }
+    return null;
+  };
+
+  /* Cuotas: 6c, 6 c, 6 cuotas, x6, 6x. Con el valor de cada una: 3 cuotas de 70000, 3x70000. */
+  const buscarCuotas = norm => {
+    for (let i = norm.length - 1; i >= 0; i--) {
+      const t = norm[i];
+      const pegado = t.match(/^(\d{1,2})x\$?(\d[\d.,]*)$/);
+      if (pegado) {
+        const v = E.parsearMonto(pegado[2]);
+        if (v) return { ini: i > 0 && norm[i - 1] === 'en' ? i - 1 : i, fin: i + 1, cuotas: Number(pegado[1]), valor: v };
+      }
+      const m = t.match(/^(\d{1,2})(c|cts?|cuotas?|x)$/) || t.match(/^x(\d{1,2})$/);
+      let ini = i, cuotas = null;
+      if (m) cuotas = Number(m[1]);
+      else if (/^(c|cts?|cuotas?)$/.test(t) && i > 0 && /^\d{1,2}$/.test(norm[i - 1])) { cuotas = Number(norm[i - 1]); ini = i - 1; }
+      if (cuotas == null) continue;
+      if (ini > 0 && norm[ini - 1] === 'en') ini--;
+      let fin = i + 1, valor = null;
+      if (norm[fin] === 'de' && norm[fin + 1]) {
+        const conPalabra = /^(mil|k|m|lucas?|palos?)$/.test(norm[fin + 2] || '');
+        const v = E.parsearMonto(conPalabra ? norm[fin + 1] + norm[fin + 2] : norm[fin + 1]);
+        if (v) { valor = v; fin += conPalabra ? 3 : 2; }
+      }
+      return { ini, fin, cuotas, valor };
+    }
+    return null;
+  };
+
+  /* Cambia las cuotas escritas en el texto y saca el interés. Si no había cuotas, deja lo demás como está. */
+  E.cambiarCuotasEnTexto = (texto, n) => {
+    const tokens = (texto || '').trim().split(/\s+/).filter(Boolean);
+    const norm = tokens.map(normalizar);
+    const int = buscarInteres(norm);
+    if (int) { tokens.splice(int.i, int.n); norm.splice(int.i, int.n); }
+    const c = buscarCuotas(norm);
+    if (c) tokens.splice(c.ini, c.fin - c.ini, ...(n > 1 ? [`${n}c`] : []));
+    return tokens.join(' ');
+  };
+
   E.parsearCompra = (texto, tarjetas) => {
     const alias = tarjetas ? aliasDeTarjetas(tarjetas) : ALIAS_MEDIO;
-    const r = { nombre: '', monto: null, cuotas: 1, medio: null, faltan: [], error: null, ok: false };
+    const r = { nombre: '', monto: null, cuotas: 1, cuotasDichas: false, interes: null, valorCuota: null, precio: null, medio: null, faltan: [], error: null, ok: false };
     const tokens = (texto || '').normalize('NFC').replace(/\$\s+/g, '$').trim().split(/\s+/).filter(Boolean);
     let norm = tokens.map(normalizar);
     const quitar = (i, n) => { tokens.splice(i, n); norm.splice(i, n); };
@@ -133,22 +179,15 @@
       quitar(medio.i, medio.n);
     }
 
-    /* Cuotas: 6c, 6 c, 6 cuotas, x6, 6x */
-    for (let i = norm.length - 1; i >= 0; i--) {
-      const t = norm[i];
-      let m = t.match(/^(\d{1,2})(c|cts?|cuotas?|x)$/) || t.match(/^x(\d{1,2})$/);
-      if (m) {
-        r.cuotas = Number(m[1]);
-        quitar(i, 1);
-        if (i > 0 && norm[i - 1] === 'en') quitar(i - 1, 1);
-        break;
-      }
-      if (/^(c|cts?|cuotas?)$/.test(t) && i > 0 && /^\d{1,2}$/.test(norm[i - 1])) {
-        r.cuotas = Number(norm[i - 1]);
-        quitar(i - 1, 2);
-        if (i - 2 >= 0 && norm[i - 2] === 'en') quitar(i - 2, 1);
-        break;
-      }
+    const int = buscarInteres(norm);
+    if (int) { r.interes = int.interes; quitar(int.i, int.n); }
+
+    const cuo = buscarCuotas(norm);
+    if (cuo) {
+      r.cuotas = cuo.cuotas;
+      r.cuotasDichas = true;
+      r.valorCuota = cuo.valor;
+      quitar(cuo.ini, cuo.fin - cuo.ini);
     }
 
     /* Monto: el número más grande que quede. */
@@ -160,6 +199,13 @@
       if (valor != null && /^\$?\d/.test(t) && (!mejor || valor > mejor.valor)) mejor = { valor, i, n: conPalabra ? 2 : 1 };
     });
     if (mejor) { r.monto = mejor.valor; quitar(mejor.i, mejor.n); }
+
+    /* Con el valor de la cuota, el monto es lo que pagás en total. El número suelto, si hay, es el precio. */
+    if (r.valorCuota) {
+      r.precio = r.monto;
+      r.monto = r.valorCuota * r.cuotas;
+      if (!r.interes) r.interes = 'con';
+    }
 
     r.nombre = tokens.join(' ');
     if (r.nombre) r.nombre = r.nombre[0].toUpperCase() + r.nombre.slice(1);
@@ -339,7 +385,24 @@
     return Math.max(0, saldo);
   };
   E.sinMontoDeuda = d => d.movs.filter(m => m.tipo !== 'pago' && m.monto == null);
-  E.deudaEnARS = (s, d) => E.saldoDeuda(d) * (d.moneda === 'USD' ? s.config.tc : 1);
+
+  /* Las deudas en dólares van al blue de venta: es lo que pagarías para comprar esos dólares.
+     El dólar de config.tc queda aparte, solo para estimar comisiones. */
+  E.tcDeuda = s => {
+    const c = s.config;
+    if (c.tcManual != null) return c.tcManual;
+    return c.blue && c.blue.venta ? c.blue.venta : c.tc;
+  };
+  E.validarBlue = d => {
+    if (!d || typeof d.venta !== 'number' || !Number.isFinite(d.venta) || d.venta < 100 || d.venta > 1e6) return null;
+    return {
+      venta: d.venta,
+      compra: typeof d.compra === 'number' && Number.isFinite(d.compra) ? d.compra : null,
+      actualizado: typeof d.actualizado === 'string' ? d.actualizado.slice(0, 40) : null
+    };
+  };
+
+  E.deudaEnARS = (s, d) => E.saldoDeuda(d) * (d.moneda === 'USD' ? E.tcDeuda(s) : 1);
   E.deudasOrdenadas = s => [...s.deudas].sort((a, b) => (a.orden || 0) - (b.orden || 0));
   E.totalDeudas = s => ({
     ars: suma(s.deudas, d => E.deudaEnARS(s, d)),
@@ -349,7 +412,7 @@
 
   E.pagarDeuda = (s, { id, monto, moneda, fecha, nota, lineaPlan }) => {
     const d = s.deudas.find(x => x.id === id);
-    const tc = s.config.tc;
+    const tc = E.tcDeuda(s);
     const ars = moneda === 'USD' ? monto * tc : monto;
     const enMonedaDeuda = d.moneda === 'USD' ? (moneda === 'USD' ? monto : monto / tc) : (moneda === 'USD' ? monto * tc : monto);
     const mov = { id: E.uid(), tipo: 'pago', monto: enMonedaDeuda, fecha, nota: nota || '' };
@@ -365,7 +428,7 @@
     const d = s.deudas.find(x => x.id === id);
     const mov = { id: E.uid(), tipo: 'suma', monto, fecha, nota: nota || '', ref: ref || null };
     d.movs.push(mov);
-    if (entro && monto) movCaja(s, fecha, monto * (d.moneda === 'USD' ? s.config.tc : 1), `Me prestó ${d.nombre}`, mov.id);
+    if (entro && monto) movCaja(s, fecha, monto * (d.moneda === 'USD' ? E.tcDeuda(s) : 1), `Me prestó ${d.nombre}`, mov.id);
     E.tocar(s);
     return mov;
   };
@@ -678,18 +741,43 @@
   };
 
   /* ---------- ¿Lo compro? ---------- */
+  /* Arma la forma de pago que preguntás. Con interés, el dato es la cuota que muestra la tienda. */
+  E.armarPlan = ({ precio = null, cuotas = 1, interes = 'sin', valorCuota = null }) => {
+    const n = Math.max(1, Number(cuotas) || 1), vacio = { n, precio, cuota: null, total: null, extra: null, pct: null };
+    if (n > 1 && interes === 'con') {
+      if (!valorCuota) return { ...vacio, interes, falta: 'cuota' };
+      const total = valorCuota * n, extra = precio ? total - precio : null;
+      return { n, precio, cuota: valorCuota, total, extra, pct: extra == null ? null : extra / precio, interes, falta: null };
+    }
+    if (!precio) return { ...vacio, interes: 'sin', falta: 'precio' };
+    return { n, precio, cuota: precio / n, total: precio, extra: 0, pct: 0, interes: 'sin', falta: null };
+  };
+
+  E.textoPlan = plan => {
+    if (plan.n <= 1 || plan.falta) return '';
+    const cuotas = `${plan.n} cuotas de ${E.fmt(plan.cuota)}`;
+    if (plan.interes === 'sin') return `${cuotas} sin interés: pagás lo mismo que en 1 pago.`;
+    if (plan.extra == null) return `${cuotas}: pagás ${E.fmt(plan.total)} en total.`;
+    if (plan.extra <= -1) return `${cuotas} suman ${E.fmt(plan.total)}, menos que el precio. Revisá los números.`;
+    if (plan.extra < 1) return `${cuotas} suman ${E.fmt(plan.total)}: lo mismo que el precio.`;
+    return `${cuotas}: pagás ${E.fmt(plan.total)}, o sea ${E.fmt(plan.extra)} de más (${Math.round(plan.pct * 100)}%).`;
+  };
+
+  const desdeCuotas = (filas, n, cuota) => {
+    for (let c = 0; c + n < filas.length; c++) {
+      let ok = true;
+      for (let i = 1; i <= n; i++) if (filas[c + i].libre < cuota) { ok = false; break; }
+      if (ok) return filas[c].ym;
+    }
+    return null;
+  };
+
   const analizarPlanes = (filas, monto) => {
     let acum = 0, desde1 = null;
     for (const r of filas) { acum += r.libre; if (acum >= monto) { desde1 = r.ym; break; } }
     const cuotas = [3, 6, 9, 12].map(n => {
       const cuota = monto / n;
-      let desde = null;
-      for (let c = 0; c + n < filas.length; c++) {
-        let ok = true;
-        for (let i = 1; i <= n; i++) if (filas[c + i].libre < cuota) { ok = false; break; }
-        if (ok) { desde = filas[c].ym; break; }
-      }
-      return { n, cuota, desde };
+      return { n, cuota, desde: desdeCuotas(filas, n, cuota) };
     });
     return { desde1, cuotas };
   };
@@ -704,14 +792,24 @@
 
   const textoOpcion = o => (o.n === 1 ? 'en 1 pago' : `en ${o.n} cuotas de ${E.fmt(o.cuota)}`);
 
-  E.evaluarCompra = (s, { monto }, hoy = E.hoyISO()) => {
+  E.evaluarCompra = (s, { monto, plan = null }, hoy = E.hoyISO()) => {
     const m0 = ymDe(hoy), p = E.podes(s, hoy), base = E.proyectar(s, { hoy });
     const a = analizarPlanes(base.filas, monto);
     const sinDeudas = E.mesSinDeudas(base);
     const r = { monto, planes: [], avisos: [], sinDeudas, ingreso: base.ingreso };
     const dentroDelMes = monto <= p.mes;
-    r.planes.push({ n: 1, cuota: monto, hoy: dentroDelMes || a.desde1 === m0, desde: dentroDelMes ? m0 : a.desde1 });
-    a.cuotas.forEach(c => r.planes.push({ n: c.n, cuota: c.cuota, hoy: c.desde === m0, desde: c.desde }));
+    /* La misma vara para cualquier forma de pago: si el total entra en lo de hoy, en el mes, o recién cuando te sobre. */
+    const estadoDe = (total, desde) => (total <= p.hoy || desde === m0 ? 'si' : total <= p.mes ? 'justo' : desde ? 'desde' : 'no');
+    const pedido = plan && plan.n > 1 && plan.cuota ? plan : null;
+    const filasCuotas = a.cuotas.map(c => ({ ...c, total: monto }));
+    if (pedido) {
+      const fila = { n: pedido.n, cuota: pedido.cuota, total: pedido.total, desde: desdeCuotas(base.filas, pedido.n, pedido.cuota) };
+      const i = filasCuotas.findIndex(c => c.n === pedido.n);
+      if (i >= 0) filasCuotas[i] = fila; else filasCuotas.push(fila);
+      filasCuotas.sort((x, y) => x.n - y.n);
+    }
+    r.planes.push({ n: 1, cuota: monto, hoy: dentroDelMes || a.desde1 === m0, desde: dentroDelMes ? m0 : a.desde1, estado: estadoDe(monto, a.desde1) });
+    filasCuotas.forEach(c => r.planes.push({ n: c.n, cuota: c.cuota, hoy: c.desde === m0, desde: c.desde, estado: estadoDe(c.total, c.desde) }));
 
     const mej = mejorOpcion(a);
     const cuotaHoy = a.cuotas.find(c => c.desde === m0);
@@ -719,7 +817,27 @@
       ? `Hasta ${mesAnio(sinDeudas)} todo lo que te sobra va a deudas y tarjetas.`
       : (sinDeudas === 'nunca' ? 'Con lo que entra hoy no llegás a cerrar tus deudas.' : '');
 
-    if (monto <= p.hoy) {
+    if (pedido) {
+      /* Respondo primero por la forma de pago que preguntaste. */
+      const n = pedido.n, cuotaTxt = E.fmt(pedido.cuota), fila = r.planes.find(x => x.n === n);
+      r.veredicto = fila.estado;
+      if (fila.estado === 'si') {
+        r.titulo = `Sí, en ${n} cuotas`;
+        r.detalle = pedido.total <= p.hoy
+          ? `Cuotas de ${cuotaTxt}. Todo junto entra en lo que podés gastar hoy (${E.fmt(p.hoy)}).`
+          : `Cuotas de ${cuotaTxt}. Cada mes te sobra para pagarlas sin frenar tus deudas.`;
+      } else if (fila.estado === 'justo') {
+        const resto = p.mes - pedido.cuota, diasResto = Math.max(1, p.dias - 1);
+        r.titulo = `Podés en ${n} cuotas, pero te ata ${n} meses`;
+        r.detalle = `Entra en lo que te queda este mes. Una cuota de ${cuotaTxt} te dejaría ${E.fmt(resto)} para ${diasResto} ${diasResto === 1 ? 'día' : 'días'}, y las otras ${n - 1} siguen saliendo.`;
+      } else if (fila.estado === 'desde') {
+        r.titulo = `En ${n} cuotas, hoy no`;
+        r.detalle = `Podés a partir de ${mesAnio(fila.desde)}: cuotas de ${cuotaTxt} que arrancan en ${mesNombre(sumarMes(fila.desde, 1))}. ${razonDeudas}`.trim();
+      } else {
+        r.titulo = `En ${n} cuotas no te entra`;
+        r.detalle = `Serían cuotas de ${cuotaTxt}. Ni esperando 3 años te entran con lo que te entra por mes (${E.fmt(base.ingreso)}). ${razonDeudas}`.trim();
+      }
+    } else if (monto <= p.hoy) {
       r.veredicto = 'si';
       r.titulo = 'Sí, podés';
       r.detalle = `Entra en lo que podés gastar hoy (${E.fmt(p.hoy)}). Te quedan ${E.fmt(p.mes - monto)} para el resto del mes.`;
@@ -740,7 +858,7 @@
     } else {
       r.veredicto = 'no';
       r.titulo = 'No podés en nada';
-      r.detalle = `Ni esperando 3 años te entra con lo que cobrás hoy en promedio (${E.fmt(base.ingreso)} por mes). ${razonDeudas}`.trim();
+      r.detalle = `Ni esperando 3 años te entra con lo que te entra por mes (${E.fmt(base.ingreso)}). ${razonDeudas}`.trim();
     }
     r.mejor = mej;
 
@@ -748,18 +866,31 @@
     const c = E.estadoCobros(s, hoy);
     if (c.vencido >= 1 && !['si', 'justo'].includes(r.veredicto)) {
       const prog = E.proyectar(s, { hoy, extra: c.vencido });
-      const pa = analizarPlanes(prog.filas, monto);
-      const pm = mejorOpcion(pa);
-      if (pm) {
-        const cuando = pm.desde === m0 ? 'podrías ya' : `podrías desde ${mesAnio(pm.desde)}`;
-        r.siTePagan = `Si te pagan lo vencido (${E.fmtCorto(c.vencido)}), ${cuando} ${textoOpcion(pm)}.`;
+      if (pedido) {
+        const d = desdeCuotas(prog.filas, pedido.n, pedido.cuota);
+        r.siTePagan = d
+          ? `Si te pagan lo vencido (${E.fmtCorto(c.vencido)}), ${d === m0 ? 'podrías ya' : `podrías desde ${mesAnio(d)}`} en ${pedido.n} cuotas.`
+          : `Aunque te paguen lo vencido (${E.fmtCorto(c.vencido)}), en ${pedido.n} cuotas no te entra.`;
       } else {
-        r.siTePagan = `Aunque te paguen lo vencido (${E.fmtCorto(c.vencido)}), no te entra.`;
+        const pa = analizarPlanes(prog.filas, monto);
+        const pm = mejorOpcion(pa);
+        if (pm) {
+          const cuando = pm.desde === m0 ? 'podrías ya' : `podrías desde ${mesAnio(pm.desde)}`;
+          r.siTePagan = `Si te pagan lo vencido (${E.fmtCorto(c.vencido)}), ${cuando} ${textoOpcion(pm)}.`;
+        } else {
+          r.siTePagan = `Aunque te paguen lo vencido (${E.fmtCorto(c.vencido)}), no te entra.`;
+        }
       }
     }
 
+    /* Cuánto atrasa tus deudas la forma de pago que preguntaste */
+    if (pedido && sinDeudas && sinDeudas !== 'nunca') {
+      const fin = E.mesSinDeudas(E.proyectar(s, { hoy, plan: { n: pedido.n, cuota: pedido.cuota, desde: 1 } }));
+      r.atrasoPedido = { fin, atraso: fin === 'nunca' ? null : difMeses(sinDeudas, fin) };
+    }
+
     /* Si igual la comprás */
-    if (!['si', 'justo'].includes(r.veredicto) && sinDeudas && sinDeudas !== 'nunca') {
+    if (!pedido && !['si', 'justo'].includes(r.veredicto) && sinDeudas && sinDeudas !== 'nunca') {
       const con = (n, cuota) => E.mesSinDeudas(E.proyectar(s, { hoy, plan: { n, cuota, desde: 1 } }));
       const fin1 = con(1, monto), fin6 = con(6, monto / 6);
       const atraso = fin => (fin === 'nunca' ? null : difMeses(sinDeudas, fin));
@@ -809,14 +940,14 @@
       conSaldo.forEach((x, i) => {
         const asigna = i === conSaldo.length - 1 ? disponible - usado : Math.floor((x.ars / totalD) * disponible);
         usado += asigna;
-        lineas.push({ id: E.uid(), grupo: 'deudas', ref: { deudaId: x.d.id }, nombre: x.d.nombre, moneda: x.d.moneda, debe: x.ars, asigna, falta: x.ars - asigna, usd: x.d.moneda === 'USD' ? asigna / s.config.tc : null, hecho: false });
+        lineas.push({ id: E.uid(), grupo: 'deudas', ref: { deudaId: x.d.id }, nombre: x.d.nombre, moneda: x.d.moneda, debe: x.ars, asigna, falta: x.ars - asigna, usd: x.d.moneda === 'USD' ? asigna / E.tcDeuda(s) : null, hecho: false });
       });
       resto -= disponible;
     } else {
       for (const x of conSaldo) {
         const asigna = Math.min(resto, x.ars);
         resto -= asigna;
-        lineas.push({ id: E.uid(), grupo: 'deudas', ref: { deudaId: x.d.id }, nombre: x.d.nombre, moneda: x.d.moneda, debe: x.ars, asigna, falta: x.ars - asigna, usd: x.d.moneda === 'USD' ? asigna / s.config.tc : null, hecho: false });
+        lineas.push({ id: E.uid(), grupo: 'deudas', ref: { deudaId: x.d.id }, nombre: x.d.nombre, moneda: x.d.moneda, debe: x.ars, asigna, falta: x.ars - asigna, usd: x.d.moneda === 'USD' ? asigna / E.tcDeuda(s) : null, hecho: false });
       }
     }
     const sinMonto = deudas.filter(x => E.sinMontoDeuda(x.d).length).map(x => x.d.nombre);
@@ -850,9 +981,9 @@
   };
 
   /* ---------- Lista de espera ---------- */
-  E.agregarEspera = (s, { nombre, monto }, hoy = E.hoyISO()) => {
+  E.agregarEspera = (s, { nombre, monto, precio = null, cuotas = 1, interes = 'sin', valorCuota = null }, hoy = E.hoyISO()) => {
     s.espera = s.espera || [];
-    s.espera.push({ id: E.uid(), nombre, monto, fecha: hoy, hasta: sumarDias(hoy, 2) });
+    s.espera.push({ id: E.uid(), nombre, monto, precio, cuotas, interes, valorCuota, fecha: hoy, hasta: sumarDias(hoy, 2) });
     E.tocar(s);
   };
   E.quitarEspera = (s, id) => {
@@ -930,10 +1061,27 @@
     return { ym, tengo, pago, libre: tengo - pago.total, gastado, cobrado, balance, estado, etiqueta, pctNoNecesario: gastado > 0 ? Math.round((noNec / gastado) * 100) : null };
   };
 
-  E.evaluarBasico = (s, monto, hoy = E.hoyISO()) => {
+  E.evaluarBasico = (s, monto, hoy = E.hoyISO(), plan = null) => {
     const tengo = E.saldoCaja(s), r = E.ritmoBasico(s, hoy), pago = E.proximoPagoBasico(s, hoy);
     const libre = tengo - pago.total;
     const separado = pago.total >= 1 ? ` Ya descontaste ${E.fmt(pago.total)} de tarjetas del ${fechaCorta(pago.vence)}.` : '';
+    if (plan && plan.n > 1 && plan.cuota) {
+      /* Respondo por la forma de pago que preguntaste. */
+      const n = plan.n, cuotaTxt = E.fmt(plan.cuota);
+      if (!s.tarjetas.length) return { veredicto: 'no', titulo: 'Las cuotas van con tarjeta', detalle: 'Agregá tu tarjeta en Tarjetas y volvé a preguntarme.' };
+      if (plan.total <= libre) return { veredicto: 'si', titulo: `Sí, en ${n} cuotas`, detalle: `Cuotas de ${cuotaTxt}. Aunque las juntes, te quedarían ${E.fmt(libre - plan.total)}.${separado}` };
+      if (r.ahorroMes == null) {
+        return plan.cuota <= libre
+          ? { veredicto: 'justo', titulo: 'Te alcanza la primera cuota', detalle: `Cuotas de ${cuotaTxt}. Todavía no conozco tu ritmo: cargá un par de semanas para saber si te entran las demás.${separado}` }
+          : { veredicto: 'no', titulo: `En ${n} cuotas no te alcanza`, detalle: `Cada cuota es de ${cuotaTxt} y después de tarjetas te quedan ${E.fmt(libre)}.${separado}` };
+      }
+      const m0 = ymDe(hoy);
+      const comprometido = ym => suma(s.tarjetas.map(t => E.resumen(s, t.id, ym, hoy)), x => x.restante);
+      let entra = r.ahorroMes >= 1;
+      for (let i = 1; entra && i <= n; i++) if (plan.cuota > r.ahorroMes - comprometido(sumarMes(m0, i))) entra = false;
+      if (entra) return { veredicto: 'si', titulo: `Sí, en ${n} cuotas`, detalle: `Cuotas de ${cuotaTxt}. Te sobran unos ${E.fmt(r.ahorroMes)} por mes.${separado}` };
+      return { veredicto: 'no', titulo: `En ${n} cuotas no te alcanza`, detalle: r.ahorroMes >= 1 ? `Cuotas de ${cuotaTxt}, y por mes te sobran unos ${E.fmt(r.ahorroMes)} contando lo que ya tenés en tarjetas.` : `Cuotas de ${cuotaTxt}, y hoy gastás tanto o más de lo que cobrás.` };
+    }
     if (monto <= libre) {
       const queda = libre - monto;
       if (r.gastoMes != null && queda < r.gastoMes) {
@@ -961,6 +1109,118 @@
       return { veredicto: 'no', titulo: 'No te alcanza', detalle: `Te faltan ${E.fmt(falta)}, y hoy gastás tanto o más de lo que cobrás.` };
     }
     return { veredicto: 'no', titulo: 'No te alcanza', detalle: `Te faltan ${E.fmt(falta)}.` };
+  };
+
+  /* ---------- Frase del día: siempre sale de tus números, nunca es motivación genérica ---------- */
+  const TIPOS_FRASE = {
+    delivery: { nombre: 'delivery', plural: 'delivery', fem: false },
+    online: { nombre: 'compra online', plural: 'compras online', fem: true },
+    hormiga: { nombre: 'gasto hormiga', plural: 'gastos hormiga', fem: false },
+    comida: { nombre: 'comida afuera', plural: 'comidas afuera', fem: true },
+    juegos: { nombre: 'gasto en juegos', plural: 'gastos en juegos', fem: false },
+    ropa: { nombre: 'compra de ropa', plural: 'compras de ropa', fem: true },
+    salidas: { nombre: 'salida', plural: 'salidas', fem: true }
+  };
+  const ORDINALES = { 3: ['Tercer', 'Tercera'], 4: ['Cuarto', 'Cuarta'], 5: ['Quinto', 'Quinta'], 6: ['Sexto', 'Sexta'], 7: ['Séptimo', 'Séptima'] };
+  const tipoDeCompra = c => { const r = REGLAS.find(x => x.re.test(normalizar(c.nombre || ''))); return r ? r.tipo : null; };
+
+  /* Lo urgente: si hay algo de esto, se muestra hasta que se resuelva. */
+  const fraseUrgente = (s, hoy, hora) => {
+    const compras = s.compras || [];
+    const pagos = s.tarjetas.map(t => E.proximoDeTarjeta(s, t.id, hoy)).filter(r => r.restante >= 1 && r.quien === 'yo').sort((a, b) => (a.vence < b.vence ? -1 : a.vence > b.vence ? 1 : 0));
+    const vencida = pagos.find(r => r.vencido);
+    if (vencida) return { texto: `${vencida.nombre} venció el ${fechaCorta(vencida.vence)}: faltan ${E.fmt(vencida.restante)}.`, tono: 'mal' };
+
+    const desde = sumarDias(hoy, -6), cuenta = {};
+    compras.filter(c => c.fecha >= desde && c.fecha <= hoy).forEach(c => { const t = tipoDeCompra(c); if (TIPOS_FRASE[t]) cuenta[t] = (cuenta[t] || 0) + 1; });
+    const repetido = Object.entries(cuenta).sort((a, b) => b[1] - a[1])[0];
+    if (repetido && repetido[1] >= 3) {
+      const x = TIPOS_FRASE[repetido[0]], n = repetido[1], ord = ORDINALES[n];
+      return { texto: ord ? `${ord[x.fem ? 1 : 0]} ${x.nombre} en 7 días. ${x.fem ? '¿La necesitás?' : '¿Lo necesitás?'}` : `Ya van ${n} ${x.plural} en 7 días.`, tono: 'mal' };
+    }
+
+    if (E.modo(s) !== 'basico') {
+      const p = E.podes(s, hoy);
+      if (p.tope > 0 && p.gastado > p.tope) return { texto: `Te pasaste ${E.fmt(p.gastado - p.tope)} del tope de este mes.`, tono: 'mal' };
+    }
+
+    const cerca = pagos.find(r => difDias(hoy, r.vence) <= 3);
+    if (cerca) {
+      const d = difDias(hoy, cerca.vence), cuando = d === 0 ? 'Hoy vence' : d === 1 ? 'Mañana vence' : `En ${d} días vence`;
+      return { texto: `${cuando} ${cerca.nombre}: ${E.fmt(cerca.restante)}.`, tono: 'ojo' };
+    }
+
+    if (hora != null && hora >= 20 && compras.length && !compras.some(c => c.fecha === hoy)) return { texto: 'Hoy no cargaste nada. ¿Fue así o te olvidaste?', tono: 'neutro' };
+    return null;
+  };
+
+  /* Lo demás: solo entra lo que hoy es verdad. */
+  E.opcionesFrase = (s, hoy = E.hoyISO()) => {
+    const op = [], sumar = (texto, tono = 'neutro') => op.push({ texto, tono });
+    const compras = (s.compras || []).filter(c => c.fecha <= hoy), ym = ymDe(hoy);
+
+    for (const t of ['delivery', 'online', 'hormiga']) {
+      const ultima = compras.filter(c => tipoDeCompra(c) === t).map(c => c.fecha).sort().pop();
+      if (ultima) {
+        const d = difDias(ultima, hoy);
+        if (d >= 2 && d <= 45) sumar(`Llevás ${d} días sin ${TIPOS_FRASE[t].plural}.`, 'bien');
+      }
+    }
+
+    const ultimaCompra = compras.map(c => c.fecha).sort().pop();
+    if (!ultimaCompra) sumar('Todavía no cargaste ninguna compra.');
+    else if (difDias(ultimaCompra, hoy) >= 3) sumar(`Hace ${difDias(ultimaCompra, hoy)} días que no cargás nada. ¿Fue así?`);
+
+    const terminando = compras.find(c => {
+      const t = E.tarjeta(s, c.medio);
+      return t && c.cuotas > 1 && difMeses(ym, sumarMes(c.primerVence || E.primerVencimiento(t, c.fecha), c.cuotas - 1)) === 1;
+    });
+    if (terminando) sumar(`El mes que viene pagás la última cuota de ${terminando.nombre}. Después se liberan ${E.fmt(terminando.monto / terminando.cuotas)} por mes.`, 'bien');
+
+    const { d } = partes(hoy), mesAnterior = sumarMes(ym, -1);
+    const hasta = mes => suma(compras.filter(c => ymDe(c.fecha) === mes && partes(c.fecha).d <= d), montoQueCuenta);
+    const esteMes = hasta(ym), antes = hasta(mesAnterior);
+    if (esteMes >= 1 && antes >= 1) sumar(`Llevás ${E.fmt(esteMes)} este mes. A esta altura de ${mesNombre(mesAnterior)} llevabas ${E.fmt(antes)}.`, esteMes <= antes ? 'bien' : 'ojo');
+
+    const delMes = compras.filter(c => ymDe(c.fecha) === ym);
+    if (delMes.length >= 3) {
+      const total = suma(delMes, montoQueCuenta), no = suma(delMes.filter(c => c.clase !== 'necesario'), montoQueCuenta);
+      const pct = total > 0 ? Math.round((no / total) * 100) : 0;
+      if (pct >= 30) sumar(`El ${pct}% de lo que compraste este mes no era necesario.`, 'ojo');
+    }
+
+    const enEspera = (s.espera || []).find(x => x.hasta <= hoy);
+    if (enEspera) sumar(`Pasaron las 48 horas de ${enEspera.nombre}. ¿Todavía tenés ganas?`);
+
+    if (E.modo(s) === 'basico') {
+      const r = E.resumenBasico(s, hoy);
+      if (r.cobrado >= 1 && r.balance <= -1) sumar(`Este mes gastaste ${E.fmt(-r.balance)} más de lo que cobraste.`, 'ojo');
+      if (r.cobrado >= 1 && r.balance >= 1) sumar(`Este mes te sobran ${E.fmt(r.balance)}.`, 'bien');
+    } else {
+      const p = E.podes(s, hoy);
+      if (p.dias > 1 && p.mes >= 1) sumar(`${p.gastadoHoy >= 1 ? 'Si no gastás más hoy' : 'Si hoy no gastás nada'}, mañana podés gastar ${E.fmt(p.mes / (p.dias - 1))}.`);
+      for (const deuda of E.deudasOrdenadas(s)) {
+        const pagos = deuda.movs.filter(m => m.tipo === 'pago' && m.monto);
+        if (!pagos.length) continue;
+        const txt = v => (deuda.moneda === 'USD' ? E.fmtUSD(v) : E.fmt(v)), saldo = E.saldoDeuda(deuda);
+        if (pagos.some(m => m.fecha && m.fecha <= hoy && difDias(m.fecha, hoy) <= 45)) sumar(`Ya bajaste ${txt(suma(pagos, m => m.monto))} de lo que le debés a ${deuda.nombre}.`, 'bien');
+        if (saldo >= 1) sumar(`Te faltan ${txt(saldo)} para cerrar lo de ${deuda.nombre}.`);
+      }
+      const c = E.estadoCobros(s, hoy);
+      if (c.vencido >= 1) sumar(`Te deben ${E.fmtCorto(c.vencido)}. Hasta que entre, no lo gastes.`);
+      const fin = E.mesSinDeudas(E.proyectar(s, { hoy }));
+      if (fin && fin !== 'nunca') sumar(`Con lo que te entra por mes, terminás tus deudas en ${mesAnio(fin)}.`);
+    }
+    return op;
+  };
+
+  /* No es un sorteo: mismo día y mismos datos, misma frase. */
+  E.fraseDelDia = (s, hoy = E.hoyISO(), { hora = null } = {}) => {
+    const urgente = fraseUrgente(s, hoy, hora);
+    if (urgente) return urgente;
+    const op = E.opcionesFrase(s, hoy);
+    if (!op.length) return { texto: 'Cargá lo que gastes y te cuento cómo vas.', tono: 'neutro' };
+    return op[Math.floor(aUTC(hoy) / 864e5) % op.length];
   };
 
   /* ---------- Estado inicial vacío ---------- */
