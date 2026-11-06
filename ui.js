@@ -1190,12 +1190,22 @@
     deudas: vDeudas, repartir: vRepartir, cobre: vCobre
   };
   /* La pill de la barra es una sola y se desliza. Los botones no se rehacen, así pueden acompañarla. */
+  const ANCHA = window.matchMedia ? matchMedia('(min-width: 960px)') : null;
+  const esAncha = () => !!(ANCHA && ANCHA.matches);
   const colocarFondo = (caja, conTransicion) => {
     const fondo = caja.querySelector('.tab-fondo'), activo = caja.querySelector('.tab.on');
     if (!fondo || !activo) return;
     if (!conTransicion) fondo.style.transition = 'none';
-    fondo.style.width = `${activo.offsetWidth}px`;
-    fondo.style.transform = `translateX(${activo.offsetLeft}px)`;
+    /* En la compu la barra es un menú al costado: la pill se mueve para abajo en vez de al costado. */
+    if (esAncha()) {
+      fondo.style.width = '';
+      fondo.style.height = `${activo.offsetHeight}px`;
+      fondo.style.transform = `translateY(${activo.offsetTop}px)`;
+    } else {
+      fondo.style.height = '';
+      fondo.style.width = `${activo.offsetWidth}px`;
+      fondo.style.transform = `translateX(${activo.offsetLeft}px)`;
+    }
     if (!conTransicion) { void fondo.offsetWidth; fondo.style.transition = ''; }
   };
 
@@ -1204,7 +1214,7 @@
     let caja = t.firstElementChild;
     const nueva = !caja || caja.dataset.firma !== firma;
     if (nueva) {
-      t.innerHTML = `<div data-firma="${firma}"><span class="tab-fondo" aria-hidden="true"></span>${tabs.map(([id, n]) => `<button class="tab" data-a="ir" data-tab="${id}" aria-label="${n}">${icono(id)}<span>${n}</span></button>`).join('')}</div>`;
+      t.innerHTML = `<div data-firma="${firma}"><span class="marca"><img src="icono-192.png" alt="" width="34" height="34">Mango</span><span class="tab-fondo" aria-hidden="true"></span>${tabs.map(([id, n]) => `<button class="tab" data-a="ir" data-tab="${id}" aria-label="${n}">${icono(id)}<span>${n}</span></button>`).join('')}</div>`;
       caja = t.firstElementChild;
     }
     const botones = [...caja.querySelectorAll('.tab')];
@@ -1217,7 +1227,7 @@
       if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     });
     colocarFondo(caja, cambio);
-    if (cambio && movimiento() && botones[0].animate) {
+    if (cambio && movimiento() && botones[0].animate && !esAncha()) {
       botones.forEach(b => {
         const dx = antes.get(b) - b.getBoundingClientRect().left;
         if (Math.abs(dx) >= 1) b.animate([{ transform: `translateX(${dx}px)` }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(.2,.8,.2,1)' });
@@ -1853,6 +1863,9 @@
       }
     });
   };
+
+  /* Al pasar de celu a compu (o al agrandar la ventana) la pill vuelve a su lugar. */
+  window.addEventListener('resize', () => { const caja = $('tabs').firstElementChild; if (caja) colocarFondo(caja, false); });
 
   const inicial = location.hash.slice(1);
   if (VISTAS[inicial]) App.tab = inicial;

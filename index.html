@@ -239,6 +239,38 @@ ol.pasos { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 @keyframes salto { 0% { opacity: 0; transform: translateY(8px) scale(.95); } 100% { opacity: 1; transform: none; } }
 @keyframes chispa { from { transform: translate(-50%, -50%) scale(.3); opacity: 1; } 70% { opacity: 1; } to { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1); opacity: 0; } }
 @keyframes festejo-nucleo { 0% { opacity: 0; transform: scale(.8); } 14% { opacity: 1; transform: none; } 82% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-8px); } }
+/* Compu: menú al costado y pantallas anchas, en dos columnas. */
+.marca { display: none; }
+@media (min-width: 960px) {
+  body { font-size: 15.5px; }
+  .app { max-width: 1180px; margin-left: 272px; margin-right: auto; padding: 28px 32px 48px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+  @media (min-width: 1500px) { .app { margin-left: max(272px, calc((100vw - 1180px) / 2 + 100px)); } }
+  .app > .cab, .app > .aviso, .app > .veredicto, .app > .btns, .app > .seg, .app > .inicio, .app > p, .app > .grupo, .app > form, .app > section.ancho { grid-column: 1 / -1; }
+  .app > .heroe { align-self: center; padding-block: 8px; }
+  .app > .accesos { align-self: center; }
+  .app > .seg { max-width: 420px; }
+  .app > form.bloque { max-width: none; }
+  .bloque { padding: 20px; }
+  .tabs { inset: 0 auto 0 0; width: 248px; padding: 16px 0 16px 16px; bottom: 0; }
+  .tabs > div { height: 100%; max-width: none; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 4px; border-radius: 28px; padding: 18px 12px; }
+  .marca { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 700; letter-spacing: -.02em; padding: 0 8px 18px; }
+  .marca img { border-radius: 9px; }
+  .tab-fondo { left: 12px; right: 12px; top: 0; bottom: auto; width: auto; height: 0; }
+  .tab, .tab.on { flex: none; justify-content: flex-start; height: 46px; padding-inline: 14px; gap: 12px; font-size: 14.5px; }
+  .tab span, .tab.on span { display: inline; }
+  .tab svg, .tab.on svg { width: 20px; height: 20px; }
+  .hoja { align-items: center; padding: 24px 24px 24px 272px; }
+  .hoja-panel { max-width: 600px; max-height: 88vh; border-radius: 30px; border: 1px solid var(--borde); box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 30px 60px rgba(0,0,0,.45); padding: 22px 24px 24px; }
+  .toast { left: calc(50% + 124px); bottom: 28px; }
+  .inicio.centro { max-width: 420px; margin-inline: auto; }
+  body:has(#tabs[hidden]) .app { margin-inline: auto; grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 960px) and (prefers-reduced-motion: no-preference) {
+  .hoja-panel { animation-name: hoja-aparece; }
+  .hoja.saliendo .hoja-panel { animation-name: hoja-desaparece; }
+}
+@keyframes hoja-aparece { from { opacity: 0; transform: translateY(16px) scale(.97); } }
+@keyframes hoja-desaparece { to { opacity: 0; transform: translateY(12px) scale(.97); } }
 </style>
 </head>
 <body>
