@@ -1,4 +1,4 @@
-/* Al Día: motor de cálculos. No toca la pantalla: recibe el estado y devuelve números. */
+/* Mango: motor de cálculos. No toca la pantalla: recibe el estado y devuelve números. */
 (function (root) {
   'use strict';
   const E = {};
@@ -455,7 +455,7 @@
     { re: /\b(rappi|pedidos ?ya|uber ?eats|delivery|glovo)\b/, clase: 'innecesario', tipo: 'delivery', motivo: 'Es delivery: había comida en casa.' },
     { re: /\b(temu|shein|aliexpress)\b/, clase: 'innecesario', tipo: 'online', motivo: 'Compra online de impulso. Nada de esto era urgente.' },
     { re: /\b(kiosco|starbucks|cafe|cafeteria|alfajor|golosinas?|havanna|bonafide)\b/, clase: 'innecesario', tipo: 'hormiga', motivo: 'Gasto hormiga: poco cada vez, mucho a fin de mes.' },
-    { re: /\b(xbox|playstation|ps[345]|nintendo|switch|steam|fortnite|juegos?|videojuegos?|consola)\b/, clase: 'innecesario', tipo: 'juegos', motivo: 'Es entretenimiento y hoy tenés deudas abiertas.' },
+    { re: /\b(xbox|playstation|ps[345]|nintendo|switch|steam|fortnite|juegos?|videojuegos?|consola)\b/, clase: 'innecesario', tipo: 'juegos', motivo: 'Es entretenimiento: si no te sobra, puede esperar.' },
     { re: /\b(tv|televisor|tele|heladera|lavarropas|aire|notebook|iphone|celular nuevo|tablet|kindle|silla|parlante|auriculares)\b/, clase: 'innecesario', tipo: 'bien', motivo: 'Es un bien caro. Si el que tenés funciona, hoy puede esperar.' },
     { re: /\b(farmacia|remedios?|medicamentos?|medico|psicolog[oa]|dentista|odontolog[oa]|oculista|prepaga|osde|swiss|analisis|estudios?|guardia|lentes)\b/, clase: 'necesario', tipo: 'salud', motivo: 'Es salud. Eso no se recorta.' },
     { re: /\b(colectivo|subte|sube|tren|nafta|ypf|shell|axion)\b/, clase: 'necesario', tipo: 'transporte', motivo: 'Transporte de todos los días.' },
@@ -841,20 +841,66 @@
     E.tocar(s);
   };
 
+  /* ---------- Versión básica: tengo, gasté, cobré, ¿puedo comprar? ---------- */
+  E.modo = s => (s.config && s.config.modo) || 'completo';
+
+  /* Cuánto entra y sale por mes, mirando hasta los últimos 90 días. Con menos de 14 días de historia no se estima. */
+  E.ritmoBasico = (s, hoy = E.hoyISO()) => {
+    const gastos = s.compras.map(c => ({ fecha: c.fecha, monto: c.monto }));
+    const cobros = (s.otrosIngresos || []).map(c => ({ fecha: c.fecha, monto: c.monto }));
+    const todas = [...gastos, ...cobros].map(x => x.fecha).sort();
+    if (!todas.length) return { dias: 0, gastoMes: null, cobroMes: null, ahorroMes: null };
+    const dias = Math.min(90, Math.max(1, difDias(todas[0], hoy) + 1));
+    if (dias < 14) return { dias, gastoMes: null, cobroMes: null, ahorroMes: null };
+    const desde = sumarDias(hoy, -dias);
+    const enVentana = l => suma(l.filter(x => x.fecha > desde), x => x.monto);
+    const gastoMes = (enVentana(gastos) / dias) * 30, cobroMes = (enVentana(cobros) / dias) * 30;
+    return { dias, gastoMes, cobroMes, ahorroMes: cobroMes - gastoMes };
+  };
+
+  E.resumenBasico = (s, hoy = E.hoyISO()) => {
+    const ym = ymDe(hoy);
+    const gastos = s.compras.filter(c => ymDe(c.fecha) === ym);
+    const cobros = (s.otrosIngresos || []).filter(c => ymDe(c.fecha) === ym);
+    const gastado = suma(gastos, c => c.monto), cobrado = suma(cobros, c => c.monto);
+    const noNec = suma(gastos.filter(c => c.clase !== 'necesario'), c => c.monto);
+    const balance = cobrado - gastado;
+    let estado = 'bien', etiqueta = 'Vas bien';
+    if (gastado === 0 && cobrado === 0) { estado = 'neutro'; etiqueta = 'Sin movimientos'; }
+    else if (balance < 0) { estado = 'mal'; etiqueta = 'Gastás más de lo que cobrás'; }
+    return { ym, tengo: E.saldoCaja(s), gastado, cobrado, balance, estado, etiqueta, pctNoNecesario: gastado > 0 ? Math.round((noNec / gastado) * 100) : null };
+  };
+
+  E.evaluarBasico = (s, monto, hoy = E.hoyISO()) => {
+    const tengo = E.saldoCaja(s), r = E.ritmoBasico(s, hoy);
+    if (monto <= tengo) {
+      const queda = tengo - monto;
+      if (r.gastoMes != null && queda < r.gastoMes) {
+        return { veredicto: 'justo', titulo: 'Te alcanza, pero quedás justo', detalle: `Te quedarían ${E.fmt(queda)} y gastás unos ${E.fmt(r.gastoMes)} por mes.` };
+      }
+      return { veredicto: 'si', titulo: 'Sí, te alcanza', detalle: `Te quedarían ${E.fmt(queda)}.` };
+    }
+    const falta = monto - tengo;
+    if (r.ahorroMes != null && r.ahorroMes >= 1) {
+      const meses = Math.ceil(falta / r.ahorroMes);
+      const cuando = sumarMes(ymDe(hoy), meses);
+      return { veredicto: 'desde', titulo: 'Todavía no te alcanza', detalle: `Te faltan ${E.fmt(falta)}. A tu ritmo, te sobran unos ${E.fmt(r.ahorroMes)} por mes: llegarías en ${mesAnio(cuando)}.` };
+    }
+    if (r.ahorroMes != null) {
+      return { veredicto: 'no', titulo: 'No te alcanza', detalle: `Te faltan ${E.fmt(falta)}, y hoy gastás tanto o más de lo que cobrás.` };
+    }
+    return { veredicto: 'no', titulo: 'No te alcanza', detalle: `Te faltan ${E.fmt(falta)}.` };
+  };
+
   /* ---------- Estado inicial vacío ---------- */
   E.estadoVacio = (hoy = E.hoyISO()) => ({
     v: 1, rev: 1,
     config: {
-      inicio: ymDe(hoy), tc: 1480, tcFecha: hoy, tope: 200000, ingresoManual: null, ultimaCopia: null,
-      sueldo: 750000, sueldoDia: 10, comisionDia: 25,
-      comision: { descuento: 0.15, niveles: [{ desde: 7300, pct: 0.10 }, { desde: 8625, pct: 0.12 }, { desde: 11213, pct: 0.14 }] }
+      modo: 'basico', inicio: ymDe(hoy), tc: 1480, tcFecha: hoy, tope: 0, ingresoManual: null, ultimaCopia: null,
+      sueldo: null, sueldoDia: 10, comisionDia: 25,
+      comision: { descuento: 0, niveles: [] }
     },
-    tarjetas: [
-      { id: 'visa', nombre: 'BBVA Visa', cierre: 22, vence: 1, venceHasta: 3, cierreEstimado: true },
-      { id: 'master', nombre: 'BBVA Master', cierre: 22, vence: 1, venceHasta: 3, cierreEstimado: true },
-      { id: 'naranja', nombre: 'Naranja', cierre: 28, vence: 10, cierreEstimado: true },
-      { id: 'mp', nombre: 'Mercado Pago', cierre: 7, vence: 17, cierreEstimado: true }
-    ],
+    tarjetas: [],
     compras: [], resumenes: {}, deudas: [], fijos: [], aprendido: {}, espera: [], ahorro: 0, plan: null,
     cobros: { items: [], pagos: [] }, otrosIngresos: [],
     caja: { movs: [] }

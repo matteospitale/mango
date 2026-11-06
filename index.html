@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Al Día</title>
+<title>Mango</title>
 <meta name="description" content="Gastos, cuotas, deudas y cobros en un solo lugar.">
 <meta name="robots" content="noindex">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Al Día">
+<meta name="apple-mobile-web-app-title" content="Mango">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0A0B24">
 <link rel="manifest" href="manifest.webmanifest">
@@ -194,6 +194,11 @@ input[type="date"] { -webkit-appearance: none; appearance: none; }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); z-index: 50; color: var(--t1); padding: 10px 16px; border-radius: 99px; display: flex; gap: 12px; align-items: center; font-size: 14px; max-width: calc(100% - 28px); width: max-content; background: linear-gradient(140deg, rgba(255,255,255,.22), rgba(255,255,255,.08)), rgba(10,11,36,.78); }
 .toast button { background: none; border: 0; color: var(--t1); font-weight: 700; text-decoration: underline; cursor: pointer; padding: 2px; white-space: nowrap; }
 .inicio { padding-block: 40px 16px; display: grid; gap: 14px; }
+.inicio.centro { text-align: center; justify-items: center; padding-top: 12vh; }
+.inicio.centro .btn, .inicio.centro .ancho { width: 100%; text-align: left; }
+.inicio.centro .btn { text-align: center; }
+.logo { width: 92px; height: 92px; border-radius: 22%; box-shadow: 0 14px 34px rgba(0,0,0,.4); }
+.accesos.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 ol.pasos { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 @media (prefers-reduced-motion: no-preference) { .barra > span, .mes-b span { transition: width .25s ease; } }
 </style>
@@ -201,7 +206,7 @@ ol.pasos { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 <body>
 <main class="app" id="vista">
   <div class="inicio">
-    <h1>Al Día</h1>
+    <h1>Mango</h1>
     <p class="sub">Cargando…</p>
   </div>
 </main>
@@ -210,6 +215,7 @@ ol.pasos { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 <div id="toast" class="toast" role="status" hidden></div>
 <noscript><p>Esta app necesita JavaScript.</p></noscript>
 <script src="engine.js"></script>
+<script src="nube.js"></script>
 <script src="ui.js"></script>
 </body>
 </html>

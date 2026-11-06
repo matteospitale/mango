@@ -1,4 +1,4 @@
-/* Al Día: pantallas. Los datos se guardan solo en este dispositivo. */
+/* Mango: pantallas. Los datos se guardan solo en este dispositivo. */
 (function () {
   'use strict';
   const E = window.AlDia;
@@ -30,6 +30,7 @@
     compro: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-1 .7-1.5 1.2-1.5 2.5"/><path d="M12 17.2v.1"/>',
     repartir: '<path d="M12 21v-7"/><path d="M12 14L5 7"/><path d="M12 14l7-7"/><path d="M5 12V7h5"/><path d="M19 12V7h-5"/>',
     plata: '<rect x="3" y="7" width="18" height="11" rx="2.5"/><circle cx="12" cy="12.5" r="2.4"/><path d="M6.5 10.5v.01M17.5 14.5v.01"/>',
+    cobre: '<rect x="3" y="7" width="18" height="11" rx="2.5"/><circle cx="12" cy="12.5" r="2.4"/><path d="M6.5 10.5v.01M17.5 14.5v.01"/>',
     ajustes: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
     arriba: '<path d="M6 15l6-6 6 6"/>',
     abajo: '<path d="M6 9l6 6 6-6"/>'
@@ -39,10 +40,21 @@
   const punto = id => `<span class="punto" style="background:${COLORES_TARJETA[id] || '#fff'}" aria-hidden="true"></span>`;
   const TABS = [['hoy', 'Hoy'], ['cargar', 'Cargar'], ['tarjetas', 'Tarjetas'], ['deudas', 'Deudas'], ['compro', '¿Compro?'], ['repartir', 'Repartir']];
 
+  const TABS_BASICO = [['hoy', 'Hoy'], ['cargar', 'Gasté'], ['cobre', 'Cobré'], ['compro', '¿Compro?']];
+  const B = () => !!App.s && E.modo(App.s) === 'basico';
+
   /* ---------- Guardado ---------- */
+  const LOCAL = location.hostname === 'localhost' && location.search.includes('local');
+  const alErrorEscritura = e => {
+    if (e && e.code === 'permission-denied') { App.fase = 'sinAcceso'; App.s = null; }
+    else App.errorGuardado = true;
+    render();
+  };
   const guardar = () => {
-    try { localStorage.setItem(CLAVE, JSON.stringify(App.s)); App.errorGuardado = false; }
-    catch (e) { App.errorGuardado = true; }
+    if (LOCAL) {
+      try { localStorage.setItem(CLAVE, JSON.stringify(App.s)); App.errorGuardado = false; }
+      catch (e) { App.errorGuardado = true; }
+    } else if (App.usuario && App.s) window.Nube.guardar(App.s, alErrorEscritura);
   };
   const leer = () => {
     try { const t = localStorage.getItem(CLAVE); return t ? JSON.parse(t) : null; }
@@ -54,7 +66,7 @@
     E.tocar(App.s);
     guardar();
     render();
-    if (msg) toast(msg, deshacer ? () => { App.s = JSON.parse(antes); E.tocar(App.s); guardar(); render(); toast('Listo, lo deshice.'); } : null);
+    if (msg) toast(msg, deshacer ? () => { const rev = App.s.rev; App.s = JSON.parse(antes); App.s.rev = rev; E.tocar(App.s); guardar(); render(); toast('Listo, lo deshice.'); } : null);
   };
   const toast = (msg, alDeshacer) => {
     const t = $('toast');
@@ -97,10 +109,7 @@
     const claseBarra = cv.estado === 'mal' ? 'mal' : cv.estado === 'ojo' ? 'ojo' : '';
     const pillCv = cv.estado === 'bien' ? pill('bien', cv.etiqueta, '✓') : cv.estado === 'ojo' ? pill('ojo', cv.etiqueta, '!') : pill('mal', cv.etiqueta, '×');
     const avisos = [];
-    if (App.errorGuardado) avisos.push(`<div class="aviso mal"><strong>No se pudo guardar.</strong> Guardá una copia desde Ajustes antes de cerrar.</div>`);
-    if (esIOS() && !instalada()) avisos.push(`<div class="aviso azul"><strong>Instalala en el inicio.</strong> Tocá Compartir y después "Agregar a inicio". Lo que cargues en Safari no pasa a la app instalada.</div>`);
-    const ultima = s.config.ultimaCopia;
-    if ((!ultima && s.rev > 8) || (ultima && E.difDias(ultima, h) >= 14)) avisos.push(`<div class="aviso"><span>Tus datos viven solo en este celular. ${ultima ? `Tu última copia es del ${E.fechaCorta(ultima)}.` : 'Todavía no guardaste ninguna copia.'}</span><button class="link" data-a="exportar">Guardar copia ahora</button></div>`);
+    if (App.errorGuardado) avisos.push(`<div class="aviso mal"><strong>No se pudo guardar.</strong> Revisá tu conexión y volvé a intentar.</div>`);
     return `
       <header class="cab"><span class="pill vidrio">${esc(E.fechaLarga(h))}</span><button class="icono" data-a="ajustes" aria-label="Ajustes">${icono('ajustes')}</button></header>
       ${avisos.join('')}
@@ -159,14 +168,22 @@
   /* ---------- Cargar ---------- */
   const OPCIONES_MEDIO = s => [...s.tarjetas.map(t => [t.id, t.nombre]), ['efectivo', 'Efectivo'], ['transferencia', 'Transferencia'], ['debito', 'Débito']];
   const textoCuotas = (s, c) => {
+    if (B()) return E.fechaLarga(c.fecha);
     if (c.cuotas <= 1) return E.nombreMedio(s, c.medio);
     return `${c.cuotas} cuotas de ${f(c.monto / c.cuotas)} · ${E.nombreMedio(s, c.medio)}`;
   };
 
   function previewCarga() {
     const s = App.s, t = App.texto;
-    if (!t.trim()) return '<p class="ayuda">Escribí qué, cuánto, las cuotas si hay, y con qué pagaste. La fecha y si era necesario los pongo yo.</p>';
+    if (!t.trim()) return B()
+      ? '<p class="ayuda">Escribí qué y cuánto. La fecha y si era necesario los pongo yo.</p>'
+      : '<p class="ayuda">Escribí qué, cuánto, las cuotas si hay, y con qué pagaste. La fecha y si era necesario los pongo yo.</p>';
     const p = E.parsearCompra(t);
+    if (B()) {
+      if (!p.nombre || !p.monto) return `<p class="ayuda">Falta ${esc(!p.monto ? 'el monto' : 'qué compraste')}.</p>`;
+      const a = E.clasificar(s, { nombre: p.nombre, monto: p.monto, cuotas: 1 }, hoy(), { hora: horaAhora() });
+      return `<div style="display:grid;gap:6px"><span class="nom">${esc(p.nombre)}</span><span class="chico">${f(p.monto)}</span><div class="entre">${pillClase(a.clase)}<span class="chico" style="flex:1 1 60%">${esc(a.motivo)}</span></div></div>`;
+    }
     const partes = [];
     if (p.nombre) partes.push(`<span class="nom">${esc(p.nombre)}</span>`);
     let detalle = '';
@@ -232,8 +249,8 @@
     if (!c) return;
     abrirHoja('Editar compra', `<form data-form="editarCompra" data-id="${c.id}">
       ${campo('c-nombre', 'Qué fue', c.nombre)}
-      <div class="fila-campos">${campo('c-monto', 'Monto total', redondo(c.monto), { modo: 'decimal' })}${campo('c-cuotas', 'Cuotas', c.cuotas, { modo: 'numeric' })}</div>
-      <div class="campo"><label for="c-medio">Con qué pagaste</label><select id="c-medio" name="c-medio">${OPCIONES_MEDIO(s).map(([v, t]) => `<option value="${v}" ${v === c.medio ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+      ${B() ? `${campo('c-monto', 'Monto', redondo(c.monto), { modo: 'decimal' })}<input type="hidden" name="c-cuotas" value="1"><input type="hidden" name="c-medio" value="${esc(c.medio)}">` : `<div class="fila-campos">${campo('c-monto', 'Monto total', redondo(c.monto), { modo: 'decimal' })}${campo('c-cuotas', 'Cuotas', c.cuotas, { modo: 'numeric' })}</div>
+      <div class="campo"><label for="c-medio">Con qué pagaste</label><select id="c-medio" name="c-medio">${OPCIONES_MEDIO(s).map(([v, t]) => `<option value="${v}" ${v === c.medio ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`}
       ${campo('c-fecha', 'Fecha', c.fecha, { tipo: 'date' })}
       <div class="campo"><span class="et-campo">¿Era necesario?</span>${chips('c-clase', Object.entries(CLASES).map(([k, v]) => [k, v.t]), c.clase)}<span class="ayuda">${esc(c.motivo || '')}</span></div>
       <button class="btn prim lleno">Guardar cambios</button>
@@ -576,7 +593,48 @@
   }
 
   /* ---------- Ajustes y copias ---------- */
+  const bloqueCuenta = () => `<section class="bloque">
+      <h2>Tu cuenta</h2>
+      <p class="chico">${esc(App.usuario ? App.usuario.email : 'Sin cuenta en esta prueba')}</p>
+      <p class="chico">Tus datos están guardados en tu cuenta y solo los ves vos. Al cerrar sesión se borran de este dispositivo, no de tu cuenta.</p>
+      ${App.usuario ? '<button class="btn" data-a="salir">Cerrar sesión</button>' : ''}
+    </section>
+    <section class="bloque" id="acceso-bloque" hidden></section>`;
+
+  const bloqueCopia = s => `<section class="bloque">
+      <h2>Copia en un archivo</h2>
+      <p class="chico">Es opcional: sirve para tener tus datos también fuera de tu cuenta.${s.config.ultimaCopia ? ` Última: ${E.fechaCorta(s.config.ultimaCopia)}.` : ''}</p>
+      <div class="btns"><button class="btn" data-a="exportar">Guardar copia</button><button class="btn" data-a="importar">Cargar copia</button></div>
+    </section>
+    <button class="btn peligro lleno" data-a="borrarTodo">Borrar todos los datos</button>`;
+
+  /* Solo la cuenta administradora puede leer esta lista: a las demás las reglas se lo niegan y la sección no aparece. */
+  async function cargarAcceso() {
+    const caja = $('acceso-bloque');
+    if (!caja || !App.usuario) return;
+    let lista;
+    try { lista = await window.Nube.listarAcceso(); } catch (e) { return; }
+    if (!$('acceso-bloque')) return;
+    caja.hidden = false;
+    caja.innerHTML = `<h2>Quién más puede entrar</h2>
+      <p class="chico">Cada persona que agregues entra con su Google, arranca en la versión básica y ve solo lo suyo.</p>
+      <div class="lista">${lista.map(m => `<div class="fila"><span class="izq"><span class="chico">${esc(m)}</span></span><span class="der"><button class="link chico" data-a="accesoQuitar" data-mail="${esc(m)}">Quitar</button></span></div>`).join('') || '<p class="chico">Por ahora solo vos.</p>'}</div>
+      <form data-form="acceso">${campo('ac-mail', 'Mail de Google', '', { modo: 'email', ph: 'nombre@gmail.com', extra: 'autocapitalize="none" autocorrect="off" spellcheck="false"' })}<button class="btn lleno">Autorizar</button></form>`;
+  }
+
+  function hojaAjustesBasico() {
+    const s = App.s;
+    abrirHoja('Ajustes', `<form data-form="ajustesBasico">
+      ${campo('a-caja', 'Plata que tengo', redondo(E.saldoCaja(s)), { modo: 'decimal', ayuda: 'Corregilo si no coincide con lo que tenés de verdad.' })}
+      <button class="btn prim lleno">Guardar</button>
+    </form>
+    ${bloqueCuenta()}
+    ${bloqueCopia(s)}`);
+    cargarAcceso();
+  }
+
   function hojaAjustes() {
+    if (B()) { hojaAjustesBasico(); return; }
     const s = App.s, h = hoy(), ing = E.ingresoPrudente(s, h);
     const auto = E.ingresoPrudente({ ...s, config: { ...s.config, ingresoManual: null } }, h);
     abrirHoja('Ajustes', `<form data-form="ajustes">
@@ -592,12 +650,98 @@
       <button type="button" class="btn mini" data-a="nuevoFijo">Agregar gasto fijo</button>
       <button class="btn prim lleno">Guardar ajustes</button>
     </form>
-    <section class="bloque">
-      <h2>Copia de tus datos</h2>
-      <p class="chico">Tus datos están solo en este celular. Guardá una copia de vez en cuando en Archivos o iCloud.${s.config.ultimaCopia ? ` Última: ${E.fechaCorta(s.config.ultimaCopia)}.` : ''}</p>
-      <div class="btns"><button class="btn" data-a="exportar">Guardar copia</button><button class="btn" data-a="importar">Cargar copia</button></div>
-    </section>
-    <button class="btn peligro lleno" data-a="borrarTodo">Borrar todos los datos</button>`);
+    ${bloqueCuenta()}
+    ${bloqueCopia(s)}`);
+    cargarAcceso();
+  }
+
+  /* ---------- Versión básica ---------- */
+  function vHoyBasico() {
+    const s = App.s, h = hoy(), r = E.resumenBasico(s, h);
+    const movs = [
+      ...s.compras.map(c => ({ gasto: true, id: c.id, nombre: c.nombre, monto: c.monto, fecha: c.fecha, clase: c.clase })),
+      ...(s.otrosIngresos || []).map(i => ({ gasto: false, id: i.id, nombre: i.nota || 'Cobro', monto: i.monto, fecha: i.fecha }))
+    ].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 8);
+    const pieHeroe = r.gastado === 0 && r.cobrado === 0 ? `Sin movimientos en ${E.mesNombre(r.ym)}` : r.balance >= 0 ? `Este mes te sobran ${f(r.balance)}` : `Este mes gastaste ${f(-r.balance)} más de lo que cobraste`;
+    const pillMes = r.estado === 'bien' ? pill('bien', r.etiqueta, '✓') : r.estado === 'mal' ? pill('mal', r.etiqueta, '×') : pill('neutro', r.etiqueta);
+    return `
+      <header class="cab"><span class="pill vidrio">${esc(E.fechaLarga(h))}</span><button class="icono" data-a="ajustes" aria-label="Ajustes">${icono('ajustes')}</button></header>
+      ${App.errorGuardado ? '<div class="aviso mal"><strong>No se pudo guardar.</strong> Revisá tu conexión y volvé a intentar.</div>' : ''}
+      <section class="heroe">
+        <span class="heroe-et">Tengo</span>
+        <span class="heroe-num num">${f(r.tengo)}</span>
+        <span class="heroe-pie">${esc(pieHeroe)}</span>
+      </section>
+      <nav class="accesos tres" aria-label="Accesos rápidos">
+        <button class="acceso" data-a="ir" data-tab="cargar"><span class="aro">${icono('cargar')}</span>Gasté</button>
+        <button class="acceso" data-a="ir" data-tab="cobre"><span class="aro">${icono('plata')}</span>Cobré</button>
+        <button class="acceso" data-a="ir" data-tab="compro"><span class="aro">${icono('compro')}</span>¿Lo compro?</button>
+      </nav>
+      <section class="bloque">
+        <div class="entre"><h2>Este mes</h2>${pillMes}</div>
+        <div class="lista">
+          <div class="fila"><span class="izq"><span class="nom">Cobré</span></span><span class="der"><span class="num num-fila v-bien">${f(r.cobrado)}</span></span></div>
+          <div class="fila"><span class="izq"><span class="nom">Gasté</span></span><span class="der"><span class="num num-fila v-mal">${f(r.gastado)}</span></span></div>
+        </div>
+        ${r.pctNoNecesario != null ? `<p class="chico">El ${r.pctNoNecesario}% de lo que gastaste no era necesario.</p>` : ''}
+      </section>
+      <section class="bloque">
+        <h2>Últimos movimientos</h2>
+        ${movs.length ? `<div class="lista">${movs.map(m => m.gasto
+          ? `<button class="fila" data-a="compra" data-id="${m.id}"><span class="izq"><span class="nom">${esc(m.nombre)}</span><span class="chico">${E.fechaCorta(m.fecha)}</span></span><span class="der"><span class="num">-${f(m.monto)}</span>${pillClase(m.clase)}</span></button>`
+          : `<div class="fila"><span class="izq"><span class="nom">${esc(m.nombre)}</span><span class="chico">${E.fechaCorta(m.fecha)}</span></span><span class="der"><span class="num v-bien">+${f(m.monto)}</span></span></div>`).join('')}</div>` : '<p class="chico">Cuando cargues un gasto o un cobro, aparece acá.</p>'}
+      </section>`;
+  }
+
+  function vCargarBasico() {
+    const s = App.s;
+    const compras = [...s.compras].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 40);
+    return `<header class="cab"><div><h1>Gasté</h1></div></header>
+      <form class="bloque" data-form="cargar" autocomplete="off">
+        <div class="campo">
+          <label for="cargar-texto">¿En qué y cuánto?</label>
+          <input id="cargar-texto" type="text" value="${esc(App.texto)}" placeholder="rappi 20450" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done">
+        </div>
+        <div id="cargar-vista">${previewCarga()}</div>
+        <button class="btn prim lleno">Guardar</button>
+      </form>
+      ${compras.length ? `<section class="bloque"><div class="lista">${compras.map(filaCompra).join('')}</div></section>` : '<p class="sub">Cuando guardes un gasto, aparece acá.</p>'}`;
+  }
+
+  function vCobre() {
+    const s = App.s;
+    const lista = [...(s.otrosIngresos || [])].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 40);
+    return `<header class="cab"><div><h1>Cobré</h1></div></header>
+      <form class="bloque" data-form="cobre" autocomplete="off">
+        <div class="fila-campos">
+          ${campo('co-monto', '¿Cuánto?', '', { modo: 'decimal', ph: '500.000' })}
+          ${campo('co-fecha', '¿Cuándo?', hoy(), { tipo: 'date' })}
+        </div>
+        ${campo('co-nota', '¿De qué?', '', { ph: 'Sueldo, venta, regalo…' })}
+        <button class="btn prim lleno">Guardar</button>
+      </form>
+      ${lista.length ? `<section class="bloque"><div class="lista">${lista.map(i => `<div class="fila"><span class="izq"><span class="nom">${esc(i.nota || 'Cobro')}</span><span class="chico">${esc(E.fechaLarga(i.fecha))}</span></span><span class="der"><span class="num v-bien">${f(i.monto)}</span><button class="link chico" data-a="borrarEntrada" data-id="${i.id}">Borrar</button></span></div>`).join('')}</div></section>` : '<p class="sub">Cuando guardes un cobro, aparece acá.</p>'}`;
+  }
+
+  function vComproBasico() {
+    const s = App.s, h = hoy(), p = E.parsearCompra(App.compro);
+    let res = '';
+    if (App.comproHecho) {
+      if (!p.monto) res = '<p class="error">Decime cuánto sale. Por ejemplo: zapatillas 90000</p>';
+      else {
+        const v = E.evaluarBasico(s, p.monto, h);
+        const k = v.veredicto === 'si' ? 'bien' : v.veredicto === 'justo' ? 'ojo' : 'mal';
+        const a = E.clasificar(s, { nombre: p.nombre || 'Compra', monto: p.monto, cuotas: 1 }, h, { hora: horaAhora() });
+        res = `<section class="veredicto ${k}"><h3>${esc(v.titulo)}</h3><p>${esc(v.detalle)}</p></section>
+          <section class="bloque"><div class="entre"><h2>¿Es necesario?</h2>${pillClase(a.clase)}</div><p>${esc(a.motivo)}</p></section>
+          <button class="btn lleno" data-a="comproCargar">La compré</button>`;
+      }
+    }
+    return `<header class="cab"><div><h1>¿Lo compro?</h1></div></header>
+      <form class="bloque" data-form="compro" autocomplete="off">
+        <div class="campo"><label for="compro-texto">¿Qué querés comprar y cuánto sale?</label><input id="compro-texto" type="text" value="${esc(App.compro)}" placeholder="zapatillas 90000" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go"></div>
+        <button class="btn prim lleno">Decime si puedo</button>
+      </form>${res}`;
   }
 
   function hojaMovimientos() {
@@ -607,13 +751,13 @@
   }
 
   async function exportar() {
-    const s = App.s, texto = JSON.stringify({ app: 'al-dia', v: 1, exportado: hoy(), estado: s });
-    const nombre = `al-dia-copia-${hoy()}.json`;
+    const s = App.s, texto = JSON.stringify({ app: 'mango', v: 1, exportado: hoy(), estado: s });
+    const nombre = `mango-copia-${hoy()}.json`;
     let hecho = false;
     try {
       const archivo = new File([texto], nombre, { type: 'application/json' });
       if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
-        await navigator.share({ files: [archivo], title: 'Copia de Al Día' });
+        await navigator.share({ files: [archivo], title: 'Copia de Mango' });
         hecho = true;
       } else {
         const url = URL.createObjectURL(archivo);
@@ -662,11 +806,12 @@
     const est = validarCopia(obj);
     if (!est) {
       const err = $('imp-error');
-      if (err) { err.hidden = false; err.textContent = 'Ese archivo no es una copia de Al Día.'; }
+      if (err) { err.hidden = false; err.textContent = 'Ese archivo no es una copia de Mango.'; }
       return;
     }
     App.s = est;
     E.tocar(App.s);
+    App.fase = 'app';
     guardar();
     cerrarHoja();
     App.tab = 'hoy';
@@ -675,26 +820,68 @@
   }
 
   /* ---------- Pantalla de inicio sin datos ---------- */
+  const logo = () => '<img class="logo" src="icono-192.png" alt="" width="92" height="92">';
+
   function vInicio() {
-    const ios = esIOS(), inst = instalada();
-    return `<div class="inicio">
-      <h1>Al Día</h1>
-      <p class="sub">Cuánto te deben, cuánto debés y cuánto podés gastar hoy. Todo queda guardado solo en este dispositivo.</p>
-      ${ios && !inst ? `<section class="bloque"><h2>Primero instalala</h2><ol class="pasos"><li>Tocá el botón Compartir de Safari.</li><li>Elegí "Agregar a inicio".</li><li>Abrí Al Día desde la pantalla de inicio.</li><li>Cargá tus datos ahí adentro.</li></ol><p class="ayuda">Safari y la app instalada no comparten datos.</p></section>` : ''}
-      <button class="btn prim lleno" data-a="importar">Cargar mis datos</button>
-      <button class="btn lleno" data-a="empezar">Empezar de cero</button>
+    const local = leer();
+    return `<div class="inicio centro">
+      ${logo()}
+      <h1>Bienvenido a Mango</h1>
+      <p class="sub">${App.usuario ? esc(App.usuario.email) : 'Prueba local'}</p>
+      <form class="bloque ancho" data-form="empezar" autocomplete="off">
+        ${campo('em-plata', '¿Cuánta plata tenés hoy?', '', { modo: 'decimal', ph: '200.000' })}
+        <button class="btn prim lleno">Empezar</button>
+      </form>
+      ${local && !LOCAL ? '<button class="btn lleno" data-a="usarLocal">Usar los datos de este dispositivo</button>' : ''}
+      <button class="link" data-a="importar">Ya tengo un archivo con mis datos</button>
     </div>`;
   }
 
+  function vLogin() {
+    return `<div class="inicio centro">
+      ${logo()}
+      <h1>Mango</h1>
+      <p class="sub">Tu plata, clara.</p>
+      <button class="btn prim lleno" data-a="entrar" ${App.nubeLista ? '' : 'disabled'}>Entrar con Google</button>
+      ${App.errorLogin ? `<p class="error">${esc(App.errorLogin)}</p>` : ''}
+      <p class="ayuda">Solo entran las cuentas autorizadas. Cada una ve únicamente sus datos.</p>
+    </div>`;
+  }
+
+  const vCargando = () => `<div class="inicio centro">${logo()}<h1>Mango</h1><p class="sub">${esc(App.mensajeCarga || 'Trayendo tus datos…')}</p></div>`;
+
+  const vSinAcceso = () => `<div class="inicio centro">
+      ${logo()}
+      <h1>Esta cuenta no tiene acceso</h1>
+      <p class="sub">${esc(App.usuario ? App.usuario.email : '')}</p>
+      <p class="ayuda">Pedile al dueño de Mango que autorice este mail.</p>
+      <button class="btn lleno" data-a="salir">Entrar con otra cuenta</button>
+    </div>`;
+
+  const vErrorNube = () => `<div class="inicio centro">
+      ${logo()}
+      <h1>No pude conectarme</h1>
+      <p class="sub">La primera vez hace falta internet. Revisá tu conexión.</p>
+      <button class="btn lleno" data-a="recargar">Reintentar</button>
+    </div>`;
+
   /* ---------- Render ---------- */
-  const VISTAS = { hoy: vHoy, cargar: vCargar, tarjetas: vTarjetas, deudas: vDeudas, compro: vCompro, repartir: vRepartir };
+  const VISTAS = {
+    hoy: () => (B() ? vHoyBasico() : vHoy()),
+    cargar: () => (B() ? vCargarBasico() : vCargar()),
+    compro: () => (B() ? vComproBasico() : vCompro()),
+    tarjetas: vTarjetas, deudas: vDeudas, repartir: vRepartir, cobre: vCobre
+  };
   function render() {
     const v = $('vista'), t = $('tabs');
-    if (!App.s) { v.innerHTML = vInicio(); t.hidden = true; return; }
+    const fuera = { cargando: vCargando, login: vLogin, sinAcceso: vSinAcceso, error: vErrorNube, sinDatos: vInicio }[App.fase];
+    if (fuera) { v.innerHTML = fuera(); t.hidden = true; return; }
     t.hidden = false;
+    const tabs = B() ? TABS_BASICO : TABS;
+    if (!tabs.some(([id]) => id === App.tab)) App.tab = 'hoy';
     const y = window.scrollY;
     v.innerHTML = VISTAS[App.tab]();
-    t.innerHTML = `<div>${TABS.map(([id, n]) => `<button class="tab ${App.tab === id ? 'on' : ''}" data-a="ir" data-tab="${id}" aria-label="${n}" ${App.tab === id ? 'aria-current="page"' : ''}>${icono(id)}<span>${n}</span></button>`).join('')}</div>`;
+    t.innerHTML = `<div>${tabs.map(([id, n]) => `<button class="tab ${App.tab === id ? 'on' : ''}" data-a="ir" data-tab="${id}" aria-label="${n}" ${App.tab === id ? 'aria-current="page"' : ''}>${icono(id)}<span>${n}</span></button>`).join('')}</div>`;
     window.scrollTo(0, y);
   }
   const ir = (tab, sub) => {
@@ -726,11 +913,47 @@
       } else if (txt && txt.value.trim()) aplicarCopia(txt.value);
       else { const err = $('imp-error'); err.hidden = false; err.textContent = 'Elegí un archivo o pegá el texto.'; }
     },
-    empezar: () => { App.s = E.estadoVacio(hoy()); guardar(); render(); },
-    borrarTodo: (d, b) => {
-      if (b.dataset.seguro !== '1') { b.dataset.seguro = '1'; b.textContent = 'Tocá de nuevo para borrar todo'; return; }
+    entrar: async () => {
+      App.errorLogin = null;
+      try { await window.Nube.entrar(); }
+      catch (e) {
+        const c = e && e.code;
+        if (c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request') return;
+        App.errorLogin = c === 'auth/popup-blocked' ? 'El navegador bloqueó la ventana de Google. Permitila y volvé a intentar.'
+          : c === 'auth/network-request-failed' ? 'No hay conexión. Revisá tu internet.'
+            : (esIOS() && instalada() ? 'No se pudo abrir Google desde la app instalada. Probá entrar desde Safari.' : 'No se pudo iniciar sesión. Volvé a intentar.');
+        render();
+      }
+    },
+    salir: async () => {
+      cerrarHoja();
+      if (LOCAL) return;
+      App.fase = 'cargando'; App.mensajeCarga = 'Cerrando sesión…'; render();
+      await window.Nube.salir();
+    },
+    recargar: () => location.reload(),
+    usarLocal: () => {
+      const local = leer();
+      if (!local) return;
+      App.s = local; E.tocar(App.s); App.fase = 'app';
+      guardar();
       try { localStorage.removeItem(CLAVE); } catch (e) { /* nada */ }
-      App.s = null; cerrarHoja(); render();
+      render();
+      toast('Tus datos ya están en tu cuenta.');
+    },
+    accesoQuitar: async d => {
+      try { await window.Nube.quitarAcceso(d.mail); toast('Acceso quitado.'); cargarAcceso(); }
+      catch (e) { toast('No se pudo quitar. Revisá tu conexión.'); }
+    },
+    borrarTodo: async (d, b) => {
+      if (b.dataset.seguro !== '1') { b.dataset.seguro = '1'; b.textContent = 'Tocá de nuevo para borrar todo'; return; }
+      if (LOCAL) { try { localStorage.removeItem(CLAVE); } catch (e) { /* nada */ } }
+      else {
+        const meses = {};
+        App.s.compras.forEach(c => { meses[c.fecha.slice(0, 7)] = true; });
+        await window.Nube.borrarTodo(meses);
+      }
+      App.s = null; App.fase = 'sinDatos'; App.ultimoEstado = null; cerrarHoja(); render();
     },
     elegir: (d, b) => {
       const form = b.closest('form');
@@ -843,8 +1066,46 @@
 
   /* ---------- Formularios ---------- */
   const F = {
+    empezar: (form, val) => {
+      const plata = E.parsearMonto(val('em-plata'));
+      if (plata == null) { toast('Poné cuánta plata tenés. Puede ser 0.'); return; }
+      App.s = E.estadoVacio(hoy());
+      if (plata > 0) E.ajustarCaja(App.s, plata, hoy());
+      E.tocar(App.s);
+      App.fase = 'app';
+      guardar();
+      render();
+    },
+    acceso: async (form, val) => {
+      const mail = val('ac-mail').trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) { toast('Revisá el mail.'); return; }
+      try { await window.Nube.agregarAcceso(mail); toast('Autorizado.'); cargarAcceso(); }
+      catch (e) { toast('No se pudo autorizar. Revisá tu conexión.'); }
+    },
+    ajustesBasico: (form, val) => {
+      const caja = E.parsearMonto(val('a-caja'));
+      if (caja == null) { toast('Revisá el monto.'); return; }
+      cerrarHoja();
+      mutar(s => E.ajustarCaja(s, caja, hoy()), 'Guardado.');
+    },
+    cobre: (form, val) => {
+      const monto = E.parsearMonto(val('co-monto'));
+      if (!monto) { toast('Poné cuánto cobraste.'); return; }
+      const datos = { monto, fecha: val('co-fecha') || hoy(), origen: 'otra', nota: val('co-nota').trim() || 'Cobro' };
+      mutar(s => E.registrarEntrada(s, datos), `Cobraste ${f(monto)}.`);
+    },
     cargar: () => {
       const s = App.s, p = E.parsearCompra(App.texto);
+      if (B()) {
+        if (!p.nombre || !p.monto) { const i = $('cargar-texto'); if (i) i.focus(); toast(`Falta ${!p.monto ? 'el monto' : 'qué compraste'}.`); return; }
+        const a = E.clasificar(s, { nombre: p.nombre, monto: p.monto, cuotas: 1 }, hoy(), { hora: horaAhora() });
+        const n = p.nombre, m = p.monto;
+        App.texto = '';
+        mutar(st => E.agregarCompra(st, { nombre: n, monto: m, cuotas: 1, medio: 'efectivo', fecha: hoy(), clase: a.clase, motivo: a.motivo, fuente: a.fuente }), `${n}: ${f(m)} guardado.`);
+        const i = $('cargar-texto');
+        if (i) i.focus();
+        return;
+      }
       if (!p.ok) { const i = $('cargar-texto'); if (i) i.focus(); toast(p.error || `Falta ${p.faltan.join(', ')}.`); return; }
       const a = E.clasificar(s, { nombre: p.nombre, monto: p.monto, cuotas: p.cuotas }, hoy(), { hora: horaAhora() });
       const nombre = p.nombre, monto = p.monto;
@@ -1028,10 +1289,75 @@
   });
 
   /* ---------- Arranque ---------- */
-  App.s = leer();
+  const firmaCompras = l => JSON.stringify(l.map(c => [c.id, c.monto, c.clase, c.fecha, c.cuotas, c.medio, c.nombre, c.motivo]).sort());
+  const renderSiSePuede = () => {
+    const activo = document.activeElement;
+    if ($('hoja').hidden && !(activo && /INPUT|TEXTAREA|SELECT/.test(activo.tagName))) render();
+  };
+  let estadoRemoto, mesesRemotos;
+  const aplicarRemoto = () => {
+    if (estadoRemoto === undefined || mesesRemotos === undefined || window.Nube.haySinGuardar()) return;
+    if (estadoRemoto === null) {
+      if (App.s) return;
+      App.fase = 'sinDatos';
+      render();
+      return;
+    }
+    const compras = [].concat(...Object.values(mesesRemotos));
+    if (!App.s || (estadoRemoto.rev || 0) > (App.s.rev || 0)) {
+      App.s = validarCopia({ ...JSON.parse(JSON.stringify(estadoRemoto)), compras: JSON.parse(JSON.stringify(compras)) });
+      window.Nube.fijarBase(App.s, mesesRemotos);
+      App.fase = 'app';
+      renderSiSePuede();
+    } else if ((estadoRemoto.rev || 0) === (App.s.rev || 0) && firmaCompras(App.s.compras) !== firmaCompras(compras)) {
+      App.s.compras = JSON.parse(JSON.stringify(compras));
+      delete App.s.__idx;
+      window.Nube.fijarBase(App.s, mesesRemotos);
+      renderSiSePuede();
+    }
+  };
+  const alUsuario = u => {
+    App.usuario = u;
+    App.errorLogin = null;
+    if (!u) { App.s = null; App.fase = 'login'; render(); return; }
+    App.fase = 'cargando'; App.mensajeCarga = null;
+    render();
+    estadoRemoto = undefined; mesesRemotos = undefined;
+    const sinRespuesta = setTimeout(() => { if (App.fase === 'cargando') { App.fase = 'error'; render(); } }, 15000);
+    window.Nube.escuchar(u.uid, {
+      alEstado: (d, meta) => {
+        if (d === null && meta.fromCache) return;
+        clearTimeout(sinRespuesta);
+        estadoRemoto = d;
+        aplicarRemoto();
+      },
+      alCompras: (m, meta) => {
+        if (!Object.keys(m).length && meta.fromCache) return;
+        mesesRemotos = m;
+        aplicarRemoto();
+      },
+      alError: e => {
+        clearTimeout(sinRespuesta);
+        App.s = null;
+        App.fase = e && e.code === 'permission-denied' ? 'sinAcceso' : 'error';
+        render();
+      }
+    });
+  };
+
   const inicial = location.hash.slice(1);
   if (VISTAS[inicial]) App.tab = inicial;
-  render();
+  if (LOCAL) {
+    App.s = leer();
+    App.fase = App.s ? 'app' : 'sinDatos';
+    render();
+  } else {
+    App.fase = 'login';
+    render();
+    window.Nube.iniciar({ alUsuario }).then(() => { App.nubeLista = true; if (App.fase === 'login') render(); }).catch(() => { App.fase = 'error'; render(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') window.Nube.volcarAhora(); });
+    window.addEventListener('pagehide', () => window.Nube.volcarAhora());
+  }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
   if ('serviceWorker' in navigator && !window.__SIN_SW) navigator.serviceWorker.register('sw.js').catch(() => {});
   window.__alDia = App;
