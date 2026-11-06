@@ -400,14 +400,43 @@
     return `<div style="display:grid;gap:6px">${partes.join('')}${detalle ? `<span class="chico">${esc(detalle)}</span>` : ''}${analisis}${falta}</div>`;
   }
 
+  const CATEGORIAS = {
+    juegos: 'Videojuego', comics: 'Cómic', musica: 'Música', coleccion: 'Coleccionable', tecnologia: 'Tecnología', hogar: 'Para la casa',
+    viajes: 'Viaje', ropa: 'Ropa', comida: 'Comida afuera', delivery: 'Delivery', bebida: 'Bebida', salidas: 'Salida', auto: 'Uber / taxi',
+    lectura: 'Libro', suscripcion: 'Suscripción', deporte: 'Deporte', regalo: 'Regalo', apuestas: 'Apuestas', salud: 'Salud', mascotas: 'Mascota',
+    estudio: 'Estudio', transporte: 'Transporte', servicio: 'Servicio', cuidado: 'Cuidado personal', belleza: 'Belleza', super: 'Súper',
+    online: 'Compra online', hormiga: 'Gasto hormiga', tabaco: 'Tabaco'
+  };
+  const categoria = c => CATEGORIAS[E.categoria(c.nombre)] || 'Otra cosa';
+  const mesFin = ym => (ym.slice(0, 4) === hoy().slice(0, 4) ? E.mesNombre(ym) : `${E.mesCorto(ym)} ${ym.slice(0, 4)}`);
+
+  /* Cuotas en curso: de la que está más cerca de terminar a la más lejana. En la compu, una tabla ancha. */
+  function bloqueCuotas(s) {
+    const lista = s.compras.map(c => ({ c, e: E.estadoCuotas(s, c, hoy()) })).filter(x => x.e && x.e.quedan > 0)
+      .sort((a, b) => (a.e.termina < b.e.termina ? -1 : a.e.termina > b.e.termina ? 1 : a.e.quedan - b.e.quedan));
+    if (!lista.length) return '';
+    const porMes = lista.reduce((t, x) => t + x.e.porCuota, 0);
+    const quedan = q => (q === 1 ? 'Última' : `Quedan ${q}`);
+    const filas = lista.map(({ c, e }) => `<tr data-a="compra" data-id="${c.id}">
+        <td><span class="nom">${punto(c.medio)}${esc(c.nombre)}</span></td><td>${esc(categoria(c))}</td><td>${esc(e.tarjeta)}</td>
+        <td class="num">${f(e.porCuota)}</td><td class="num">${f(e.total)}</td><td>${e.pagadas} de ${e.cuotas} · ${quedan(e.quedan)}</td><td>${esc(mesFin(e.termina))}</td></tr>`).join('');
+    const celu = lista.map(({ c, e }) => `<button class="fila" data-a="compra" data-id="${c.id}">
+        <span class="izq"><span class="nom">${punto(c.medio)}${esc(c.nombre)}</span><span class="chico">${esc(categoria(c))} · ${esc(e.tarjeta)}</span><span class="chico">${quedan(e.quedan)}${e.quedan > 1 ? ' cuotas' : ' cuota'} · termina en ${esc(mesFin(e.termina))}</span></span>
+        <span class="der"><span class="num">${f(e.porCuota)}<span class="chico tercero"> /mes</span></span><span class="chico">Total ${f(e.total)}</span></span></button>`).join('');
+    return `<section class="bloque ancho">
+        <div class="entre"><h2>Cuotas en curso</h2><span class="chico">${lista.length} compras · ${f(porMes)} por mes</span></div>
+        <div class="lista solo-celu">${celu}</div>
+        <table class="tabla tabla-cuotas solo-ancha"><thead><tr><th>Compra</th><th>Qué es</th><th>Tarjeta</th><th>Por cuota</th><th>Total</th><th>Cuotas</th><th>Termina</th></tr></thead><tbody>${filas}</tbody></table>
+      </section>`;
+  }
+
   const filaCompra = c => {
     const s = App.s;
     const duda = c.fuente === 'duda';
     return `<div class="fila" style="align-items:flex-start">
       <button class="izq link-fila" data-a="compra" data-id="${c.id}" style="background:none;border:0;padding:0;text-align:left;cursor:pointer;color:inherit">
         <span class="nom">${esc(c.nombre)}</span>
-        <span class="chico">${esc(textoCuotas(s, c))}</span>
-        ${c.motivo && c.fuente !== 'notion' ? `<span class="chico tercero">${esc(c.motivo)}</span>` : ''}
+        <span class="chico">${esc(categoria(c))} · ${esc(textoCuotas(s, c))}</span>
       </button>
       <span class="der"><span class="num">${f(c.monto)}</span>${pillClase(c.clase)}</span>
     </div>${duda ? `<div class="chips" style="padding-bottom:8px"><span class="chico" style="align-self:center">¿Qué fue?</span>${Object.entries(CLASES).map(([k, v]) => `<button class="chip" data-a="marcarClase" data-id="${c.id}" data-clase="${k}">${v.t}</button>`).join('')}</div>` : ''}`;
@@ -415,7 +444,8 @@
 
   function vCargar() {
     const s = App.s, h = hoy();
-    const compras = [...s.compras].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 60);
+    const enCurso = new Set(s.compras.filter(c => { const e = E.estadoCuotas(s, c, h); return e && e.quedan > 0; }).map(c => c.id));
+    const compras = [...s.compras].filter(c => !enCurso.has(c.id)).sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 60);
     const grupos = [];
     for (const c of compras) {
       const titulo = c.fecha === h ? 'Hoy' : c.fecha === E.sumarDias(h, -1) ? 'Ayer' : (c.fuente === 'notion' ? 'Cuotas que traje de tu Notion' : c.fuente === 'resumen' ? 'Cuotas de tus resúmenes' : E.fechaLarga(c.fecha));
@@ -435,7 +465,8 @@
         <div class="chips" role="group" aria-label="Con qué pagaste">${OPCIONES_MEDIO(s).map(([id, n]) => `<button type="button" class="chip ${p.medio === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${esc(n)}</button>`).join('')}</div>
         <button class="btn prim lleno">Guardar</button>
       </form>
-      ${grupos.length ? grupos.map(g => `<h2 class="grupo">${esc(g.titulo)}</h2><section class="bloque"><div class="lista">${g.items.map(filaCompra).join('')}</div></section>`).join('') : '<p class="sub">Cuando guardes una compra, aparece acá.</p>'}`;
+      ${bloqueCuotas(s)}
+      ${grupos.length ? grupos.map(g => `<h2 class="grupo">${esc(g.titulo)}</h2><section class="bloque"><div class="lista">${g.items.map(filaCompra).join('')}</div></section>`).join('') : (enCurso.size ? '' : '<p class="sub">Cuando guardes una compra, aparece acá.</p>')}`;
   }
 
   function hojaCompra(id) {
@@ -984,7 +1015,8 @@
         ${s.tarjetas.length ? `<div class="chips" role="group" aria-label="Con qué pagaste">${[['efectivo', 'Efectivo'], ...s.tarjetas.map(t => [t.id, t.nombre])].map(([id, n]) => `<button type="button" class="chip ${(p.medio || 'efectivo') === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${esc(n)}</button>`).join('')}</div>` : ''}
         <button class="btn prim lleno">Guardar</button>
       </form>
-      ${compras.length ? `<section class="bloque"><div class="lista">${compras.map(filaCompra).join('')}</div></section>` : '<p class="sub">Cuando guardes un gasto, aparece acá.</p>'}`;
+      ${bloqueCuotas(s)}
+      ${compras.length ? `<section class="bloque ancho"><div class="lista">${compras.map(filaCompra).join('')}</div></section>` : '<p class="sub">Cuando guardes un gasto, aparece acá.</p>'}`;
   }
 
   function vTarjetasBasico() {

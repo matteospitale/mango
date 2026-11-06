@@ -568,7 +568,7 @@
     R('temu|shein|aliexpress|wish', 'innecesario', 'online', 'Compra online de impulso. Nada de esto suele ser urgente.'),
     R('casino|apuestas?|bet|bplay|codere|betano|bet365|quini|loteria|raspadita', 'innecesario', 'apuestas', 'Son apuestas: plata que casi siempre no vuelve.'),
     R('puchos?|cigarrillos?|atado|vape|tabaco', 'innecesario', 'tabaco', 'Es un gasto que se repite todos los días y suma mucho.'),
-    R('kiosco|kioscofinca|starbucks|cafe|cafeteria|alfajor|golosinas?|havanna|bonafide|gaseosa|coca|monster|speed|chicles?', 'innecesario', 'hormiga', 'Gasto hormiga: poco cada vez, mucho a fin de mes.'),
+    R('kiosco(?! ?finca)|starbucks|cafe|cafeteria|alfajor|golosinas?|havanna|bonafide|gaseosa|coca|monster|speed|chicles?', 'innecesario', 'hormiga', 'Gasto hormiga: poco cada vez, mucho a fin de mes.'),
     R('comics?|historietas?|manga|mangas|ivrea|ovni ?press|panini|marvel|dc comics|batman|superman|x-?men|tomo|omnibus|novela grafica', 'gustito', 'comics', 'Es un cómic: lectura y colección, un gusto.'),
     R('vinilos?|lp|cd|cds|tocadiscos|bandeja|cassette|bandcamp|disqueria', 'gustito', 'musica', 'Es música para coleccionar: un gusto.'),
     R('funko|figuras?|figura de accion|hot toys|cartas|tcg|magic|yugioh|yu-gi-oh|coleccionables?|lego', 'gustito', 'coleccion', 'Es un coleccionable: un gusto, y de los que se acumulan.'),
@@ -585,7 +585,7 @@
     R('uber|didi|cabify|taxi|remis', 'gustito', 'auto', 'Auto por app: si había colectivo, se podía evitar.'),
     R('birra|cerveza|fernet|vino|vinos|bodega|vinoteca|whisky|gin|tragos?|drinks?|amaretto', 'gustito', 'bebida', 'Es bebida o una salida: un gusto.'),
     R('mc|mcdonalds?|burger|burgerking|mostaza|kfc|wendys|subway|pizzeria|pizza|sushi|empanadas?|hamburguesas?|gordis|lomitos?|milanesas?|restaurant|resto|parrilla|bar|helados?|grido|pastas|cena|almuerzo|merienda|desayuno|brunch|papanato', 'gustito', 'comida', 'Comer afuera es un gusto. Vale si no se repite mucho.'),
-    R('cine|cinemark|hoyts|showcase|recital|concierto|show|festival|entradas?|movistar arena|alpogo|passline|teatro|boliche|fiesta|cancha|partido|abono', 'gustito', 'salidas', 'Salida o evento. Es un gusto, no una necesidad.'),
+    R('cines?|trigital|cinemark|hoyts|showcase|recital|concierto|show|festival|entradas?|movistar arena|alpogo|passline|teatro|boliche|fiesta|cancha|partido|abono', 'gustito', 'salidas', 'Salida o evento. Es un gusto, no una necesidad.'),
     R('gimnasio|gym|pileta|club|padel|futbol|crossfit|yoga|pilates|suplementos?|proteina|creatina', 'gustito', 'deporte', 'Es deporte: vale la pena si lo usás de verdad.'),
     R('ropa|remera|buzo|zapatillas?|jean|pantalon|campera|camisa|vestido|medias|newsport|dexter|grid|decathlon|nike|adidas|puma|vans|converse|zara|levis|lacoste|topper|jordan|rossetti', 'gustito', 'ropa', 'Ropa. Salvo que te haga falta de verdad, es un gusto.'),
     R('perfume|perfumeria|julerias?|maquillaje|crema|skincare', 'gustito', 'belleza', 'Es un gusto personal.'),
@@ -595,6 +595,22 @@
     R('super|supermercado|carrefour|coto|jumbo|disco|vea|changomas|almacen|verduleria|carniceria|chino', 'necesario', 'super', 'Es comida para la casa.'),
     R('mercado ?libre|meli|amazon', 'gustito', 'online', 'Depende de qué compraste. Sin más datos, lo tomo como gusto.')
   ];
+
+  E.categoria = nombre => { const r = REGLAS.find(x => x.re.test(normalizar(nombre || ''))); return r ? r.tipo : null; };
+
+  /* Cómo va una compra en cuotas: cuánto es cada una, cuántas quedan y en qué mes termina. Una cuota cuenta como pagada si ya estaba pagada al cargarla o si su resumen está pagado. */
+  E.estadoCuotas = (s, c, hoy = E.hoyISO()) => {
+    const t = E.tarjeta(s, c.medio);
+    if (!t || c.cuotas < 2) return null;
+    const primero = c.primerVence || E.primerVencimiento(t, c.fecha);
+    let quedan = 0, proxima = null;
+    for (let i = 0; i < c.cuotas; i++) {
+      const ym = sumarMes(primero, i);
+      const paga = i < (c.pagadas || 0) || E.resumen(s, t.id, ym, hoy).estado === 'pagado';
+      if (!paga) { quedan++; if (!proxima) proxima = ym; }
+    }
+    return { porCuota: c.monto / c.cuotas, total: c.monto, cuotas: c.cuotas, quedan, pagadas: c.cuotas - quedan, termina: sumarMes(primero, c.cuotas - 1), proxima, tarjeta: t.nombre };
+  };
 
   /* Analiza la compra con todo lo que la app sabe: qué es, cuántas veces se repitió, cuánto pesa frente a tu tope y tus deudas, si va en cuotas y a qué hora fue. */
   E.clasificar = (s, { nombre, monto, cuotas = 1 }, hoy = E.hoyISO(), { hora = null } = {}) => {

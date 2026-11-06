@@ -241,6 +241,13 @@ ol.pasos { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
 @keyframes festejo-nucleo { 0% { opacity: 0; transform: scale(.8); } 14% { opacity: 1; transform: none; } 82% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-8px); } }
 /* Compu: menú al costado y pantallas anchas, en dos columnas. */
 .marca { display: none; }
+.solo-ancha { display: none; }
+.tabla-cuotas td, .tabla-cuotas th { text-align: left; white-space: nowrap; }
+.tabla-cuotas td.num, .tabla-cuotas th:nth-child(4), .tabla-cuotas th:nth-child(5) { text-align: right; padding-right: 18px; }
+.tabla-cuotas td:last-child, .tabla-cuotas th:last-child { text-align: right; }
+.tabla-cuotas tbody tr { cursor: pointer; }
+.tabla-cuotas tbody tr:hover td { background: rgba(255,255,255,.05); }
+.tabla-cuotas td:first-child { white-space: normal; }
 @media (min-width: 960px) {
   body { font-size: 15.5px; }
   .app { max-width: 1180px; margin-left: 272px; margin-right: auto; padding: 28px 32px 48px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
@@ -270,6 +277,9 @@ ol.pasos { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
   .hoja-panel.ancha > form > .btn.mini { justify-self: start; }
   .hoja-panel.ancha > :not(form):not(.hoja-cab) { grid-column: 2; }
   .inicio.centro { max-width: 420px; margin-inline: auto; }
+  .solo-ancha { display: table; }
+  .solo-celu { display: none; }
+  .app > .grupo { margin-top: 6px; }
   body:has(#tabs[hidden]) .app { margin-inline: auto; grid-template-columns: minmax(0, 1fr); }
 }
 @media (min-width: 960px) and (prefers-reduced-motion: no-preference) {
