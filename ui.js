@@ -1,4 +1,4 @@
-/* Mango: pantallas. Los datos se guardan solo en este dispositivo. */
+/* Mango: pantallas. Los datos viven en la cuenta de cada persona (ver nube.js). */
 (function () {
   'use strict';
   const E = window.AlDia;
@@ -37,11 +37,14 @@
   };
   const icono = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONOS[n]}</svg>`;
   const COLORES_TARJETA = { visa: '#4F7BFF', master: '#FFB020', naranja: '#FF7A1A', mp: '#27C3F3' };
-  const punto = id => `<span class="punto" style="background:${COLORES_TARJETA[id] || '#fff'}" aria-hidden="true"></span>`;
+  const PALETA_TARJETAS = ['#FF9E1B', '#4CAF50', '#F4D03F', '#6FC3DF', '#FF7A6B', '#B8E986'];
+  const colorTarjeta = id => COLORES_TARJETA[id] || PALETA_TARJETAS[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETA_TARJETAS.length];
+  const punto = id => `<span class="punto" style="background:${colorTarjeta(id)}" aria-hidden="true"></span>`;
   const TABS = [['hoy', 'Hoy'], ['cargar', 'Cargar'], ['tarjetas', 'Tarjetas'], ['deudas', 'Deudas'], ['compro', '¿Compro?'], ['repartir', 'Repartir']];
 
-  const TABS_BASICO = [['hoy', 'Hoy'], ['cargar', 'Gasté'], ['cobre', 'Cobré'], ['compro', '¿Compro?']];
+  const TABS_BASICO = [['hoy', 'Hoy'], ['cargar', 'Gasté'], ['tarjetas', 'Tarjetas'], ['cobre', 'Cobré'], ['compro', '¿Compro?']];
   const B = () => !!App.s && E.modo(App.s) === 'basico';
+  const parsear = t => E.parsearCompra(t, B() ? App.s.tarjetas : undefined);
 
   /* ---------- Guardado ---------- */
   const LOCAL = location.hostname === 'localhost' && location.search.includes('local');
@@ -168,7 +171,11 @@
   /* ---------- Cargar ---------- */
   const OPCIONES_MEDIO = s => [...s.tarjetas.map(t => [t.id, t.nombre]), ['efectivo', 'Efectivo'], ['transferencia', 'Transferencia'], ['debito', 'Débito']];
   const textoCuotas = (s, c) => {
-    if (B()) return E.fechaLarga(c.fecha);
+    if (B()) {
+      const tj = E.tarjeta(s, c.medio);
+      if (!tj) return E.fechaLarga(c.fecha);
+      return c.cuotas > 1 ? `${c.cuotas} cuotas de ${f(c.monto / c.cuotas)} · ${tj.nombre}` : tj.nombre;
+    }
     if (c.cuotas <= 1) return E.nombreMedio(s, c.medio);
     return `${c.cuotas} cuotas de ${f(c.monto / c.cuotas)} · ${E.nombreMedio(s, c.medio)}`;
   };
@@ -176,13 +183,19 @@
   function previewCarga() {
     const s = App.s, t = App.texto;
     if (!t.trim()) return B()
-      ? '<p class="ayuda">Escribí qué y cuánto. La fecha y si era necesario los pongo yo.</p>'
+      ? '<p class="ayuda">Escribí qué y cuánto. Si fue con tarjeta, sumá las cuotas y cuál: tele 600000 6c visa. La fecha y si era necesario los pongo yo.</p>'
       : '<p class="ayuda">Escribí qué, cuánto, las cuotas si hay, y con qué pagaste. La fecha y si era necesario los pongo yo.</p>';
-    const p = E.parsearCompra(t);
+    const p = parsear(t);
     if (B()) {
       if (!p.nombre || !p.monto) return `<p class="ayuda">Falta ${esc(!p.monto ? 'el monto' : 'qué compraste')}.</p>`;
-      const a = E.clasificar(s, { nombre: p.nombre, monto: p.monto, cuotas: 1 }, hoy(), { hora: horaAhora() });
-      return `<div style="display:grid;gap:6px"><span class="nom">${esc(p.nombre)}</span><span class="chico">${f(p.monto)}</span><div class="entre">${pillClase(a.clase)}<span class="chico" style="flex:1 1 60%">${esc(a.motivo)}</span></div></div>`;
+      if (p.ambiguo) return `<p class="ayuda">Tenés más de una tarjeta con "${esc(p.ambiguo)}". Aclará cuál con el nombre completo.</p>`;
+      const tj = p.medio ? E.tarjeta(s, p.medio) : null;
+      if (p.cuotas > 1 && !tj) return '<p class="ayuda">Las cuotas van con tarjeta. Elegí cuál abajo.</p>';
+      const a = E.clasificar(s, { nombre: p.nombre, monto: p.monto, cuotas: p.cuotas }, hoy(), { hora: horaAhora() });
+      let detalle = p.cuotas > 1 ? `${f(p.monto)} en ${p.cuotas} cuotas de ${f(p.monto / p.cuotas)}` : f(p.monto);
+      if (tj) detalle += ` · ${tj.nombre} · ${p.cuotas > 1 ? 'primera cuota' : 'se paga'} el ${E.fechaCorta(E.fechaEn(E.primerVencimiento(tj, hoy()), 1))}`;
+      else detalle += ' · sale de tu plata';
+      return `<div style="display:grid;gap:6px"><span class="nom">${esc(p.nombre)}</span><span class="chico">${esc(detalle)}</span><div class="entre">${pillClase(a.clase)}<span class="chico" style="flex:1 1 60%">${esc(a.motivo)}</span></div></div>`;
     }
     const partes = [];
     if (p.nombre) partes.push(`<span class="nom">${esc(p.nombre)}</span>`);
@@ -249,8 +262,9 @@
     if (!c) return;
     abrirHoja('Editar compra', `<form data-form="editarCompra" data-id="${c.id}">
       ${campo('c-nombre', 'Qué fue', c.nombre)}
-      ${B() ? `${campo('c-monto', 'Monto', redondo(c.monto), { modo: 'decimal' })}<input type="hidden" name="c-cuotas" value="1"><input type="hidden" name="c-medio" value="${esc(c.medio)}">` : `<div class="fila-campos">${campo('c-monto', 'Monto total', redondo(c.monto), { modo: 'decimal' })}${campo('c-cuotas', 'Cuotas', c.cuotas, { modo: 'numeric' })}</div>
-      <div class="campo"><label for="c-medio">Con qué pagaste</label><select id="c-medio" name="c-medio">${OPCIONES_MEDIO(s).map(([v, t]) => `<option value="${v}" ${v === c.medio ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`}
+      <div class="fila-campos">${campo('c-monto', 'Monto total', redondo(c.monto), { modo: 'decimal' })}${campo('c-cuotas', 'Cuotas', c.cuotas, { modo: 'numeric' })}</div>
+      <div class="campo"><label for="c-medio">Con qué pagaste</label><select id="c-medio" name="c-medio">${OPCIONES_MEDIO(s).map(([v, t]) => `<option value="${v}" ${v === c.medio ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+      ${B() ? campo('c-pagadas', 'Cuotas que ya pagaste', c.pagadas || 0, { modo: 'numeric', ayuda: 'Para compras que ya venías pagando: si vas por la 3 de 6, poné 2.' }) : ''}
       ${campo('c-fecha', 'Fecha', c.fecha, { tipo: 'date' })}
       <div class="campo"><span class="et-campo">¿Era necesario?</span>${chips('c-clase', Object.entries(CLASES).map(([k, v]) => [k, v.t]), c.clase)}<span class="ayuda">${esc(c.motivo || '')}</span></div>
       <button class="btn prim lleno">Guardar cambios</button>
@@ -334,10 +348,10 @@
       ${campo('p-monto', '¿Cuánto pagaste?', monto, { modo: 'decimal' })}
       <p class="ayuda" id="p-queda"></p>
       ${campo('p-fecha', '¿Cuándo?', hoy(), { tipo: 'date' })}
-      <div class="campo"><span class="et-campo">¿Quién pagó?</span>${chips('p-quien', quienes, 'yo')}<span class="ayuda" id="p-quien-ayuda">Sale de tu plata en mano.</span></div>
+      ${quienes.length > 1 ? `<div class="campo"><span class="et-campo">¿Quién pagó?</span>${chips('p-quien', quienes, 'yo')}<span class="ayuda" id="p-quien-ayuda">Sale de tu plata en mano.</span></div>` : '<input type="hidden" name="p-quien" value="yo"><p class="ayuda">Sale de tu plata.</p>'}
       ${campo('p-nota', 'Nota (opcional)', '')}
       <button class="btn prim lleno">Guardar pago</button>
-    </form>`, `Resumen de ${esc(E.mesNombre(ym))}: ${E.faltaMonto(r) ? 'todavía sin monto' : `quedan ${f(r.restante)}${r.sinResumenReal ? ' (mínimo)' : ''}`}`);
+    </form>`, `Resumen de ${esc(E.mesNombre(ym))}: ${E.faltaMonto(r) ? 'todavía sin monto' : `quedan ${f(r.restante)}${r.sinResumenReal && !B() ? ' (mínimo)' : ''}`}`);
     actualizarQueda();
   }
 
@@ -349,7 +363,8 @@
     const q = resto - monto;
     $('p-queda').textContent = !monto ? '' : q >= 1 ? `Queda pendiente ${f(q)} de esta tarjeta.` : (q <= -1 && form.dataset.real === '0' ? 'Tomo este monto como el total del resumen. Si era más, cargalo en Datos del resumen.' : 'Queda saldada.');
     const quien = form.elements['p-quien'].value;
-    $('p-quien-ayuda').textContent = quien === 'yo' ? 'Sale de tu plata en mano.' : `Se suma a tu deuda con ${E.nombreDeuda(App.s, quien)}.`;
+    const ayudaQuien = $('p-quien-ayuda');
+    if (ayudaQuien) ayudaQuien.textContent = quien === 'yo' ? 'Sale de tu plata en mano.' : `Se suma a tu deuda con ${E.nombreDeuda(App.s, quien)}.`;
   }
 
   function hojaDatosResumen(cardId, ym) {
@@ -662,7 +677,7 @@
       ...s.compras.map(c => ({ gasto: true, id: c.id, nombre: c.nombre, monto: c.monto, fecha: c.fecha, clase: c.clase })),
       ...(s.otrosIngresos || []).map(i => ({ gasto: false, id: i.id, nombre: i.nota || 'Cobro', monto: i.monto, fecha: i.fecha }))
     ].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 8);
-    const pieHeroe = r.gastado === 0 && r.cobrado === 0 ? `Sin movimientos en ${E.mesNombre(r.ym)}` : r.balance >= 0 ? `Este mes te sobran ${f(r.balance)}` : `Este mes gastaste ${f(-r.balance)} más de lo que cobraste`;
+    const pieHeroe = r.pago.total >= 1 ? `Libre después de tarjetas: ${f(r.libre)}` : r.gastado === 0 && r.cobrado === 0 ? `Sin movimientos en ${E.mesNombre(r.ym)}` : r.balance >= 0 ? `Este mes te sobran ${f(r.balance)}` : `Este mes gastaste ${f(-r.balance)} más de lo que cobraste`;
     const pillMes = r.estado === 'bien' ? pill('bien', r.etiqueta, '✓') : r.estado === 'mal' ? pill('mal', r.etiqueta, '×') : pill('neutro', r.etiqueta);
     return `
       <header class="cab"><span class="pill vidrio">${esc(E.fechaLarga(h))}</span><button class="icono" data-a="ajustes" aria-label="Ajustes">${icono('ajustes')}</button></header>
@@ -677,6 +692,7 @@
         <button class="acceso" data-a="ir" data-tab="cobre"><span class="aro">${icono('plata')}</span>Cobré</button>
         <button class="acceso" data-a="ir" data-tab="compro"><span class="aro">${icono('compro')}</span>¿Lo compro?</button>
       </nav>
+      ${r.pago.total >= 1 ? `<section class="bloque"><div class="lista"><button class="fila" data-a="ir" data-tab="tarjetas"><span class="izq"><span class="nom">Próximo pago de tarjetas</span><span class="chico">${r.pago.vencido ? 'Venció el' : 'Vence el'} ${E.fechaCorta(r.pago.vence)}</span></span><span class="der"><span class="num num-fila">${f(r.pago.total)}</span>${r.pago.vencido ? pill('mal', 'Vencido', '×') : ''}</span></button></div></section>` : ''}
       <section class="bloque">
         <div class="entre"><h2>Este mes</h2>${pillMes}</div>
         <div class="lista">
@@ -694,8 +710,8 @@
   }
 
   function vCargarBasico() {
-    const s = App.s;
-    const compras = [...s.compras].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 40);
+    const s = App.s, p = parsear(App.texto);
+    const compras =[...s.compras].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 40);
     return `<header class="cab"><div><h1>Gasté</h1></div></header>
       <form class="bloque" data-form="cargar" autocomplete="off">
         <div class="campo">
@@ -703,9 +719,56 @@
           <input id="cargar-texto" type="text" value="${esc(App.texto)}" placeholder="rappi 20450" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done">
         </div>
         <div id="cargar-vista">${previewCarga()}</div>
+        ${s.tarjetas.length ? `<div class="chips" role="group" aria-label="Con qué pagaste">${[['efectivo', 'Efectivo'], ...s.tarjetas.map(t => [t.id, t.nombre])].map(([id, n]) => `<button type="button" class="chip ${(p.medio || 'efectivo') === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${esc(n)}</button>`).join('')}</div>` : ''}
         <button class="btn prim lleno">Guardar</button>
       </form>
       ${compras.length ? `<section class="bloque"><div class="lista">${compras.map(filaCompra).join('')}</div></section>` : '<p class="sub">Cuando guardes un gasto, aparece acá.</p>'}`;
+  }
+
+  function vTarjetasBasico() {
+    const s = App.s, h = hoy(), filas = E.comprometidoBasico(s, h, 6), max = Math.max(1, ...filas.map(x => x.total));
+    const resumen = filas.length ? `<section class="bloque">
+        <h2>Lo que ya tenés comprometido</h2>
+        <div class="meses">${filas.map(x => {
+          const ab = App.abiertos.has('bm-' + x.ym);
+          return `<button class="mes-f basico" data-a="toggle" data-id="bm-${x.ym}" aria-expanded="${ab}"><span class="m">${E.fechaCorta(x.vence)}</span><span class="mes-b"><span style="width:${(x.total / max * 100).toFixed(1)}%"></span></span><span class="v num">${fc(x.total)}</span></button>
+          ${ab ? `<div class="mes-d">${x.por.map(r => `<div><span>${esc(r.nombre)}</span><span class="num">${f(r.restante)}</span></div>`).join('')}</div>` : ''}`;
+        }).join('')}</div>
+        <p class="ayuda">Todas se pagan el 1 de cada mes. Lo que compres este mes, se paga el 1 del mes que viene.</p>
+      </section>` : '';
+    const vacio = !s.tarjetas.length ? `<section class="bloque"><h2>Agregá tu primera tarjeta</h2><p class="chico">Después cargás tus compras y cuotas en Gasté, y acá ves cuánto pagás cada mes.</p></section>` : '';
+    return `<header class="cab"><div><h1>Tarjetas</h1></div></header>
+      ${vacio}${resumen}
+      ${s.tarjetas.map(t => bloqueTarjetaBasica(t, h)).join('')}
+      <button class="btn lleno" data-a="nuevaTarjeta">Agregar tarjeta</button>`;
+  }
+
+  function bloqueTarjetaBasica(t, h) {
+    const s = App.s, r = E.proximoDeTarjeta(s, t.id, h), hay = r.restante >= 1, ab = App.abiertos.has('t-' + t.id);
+    const estado = r.vencido ? pill('mal', 'Vencida', '×') : hay ? pill('azul', `Se paga el ${E.fechaCorta(r.vence)}`) : pill('bien', 'Al día', '✓');
+    const siguientes = [1, 2, 3, 4].map(i => { const ym = E.sumarMes(r.ym, i); return { ym, r: E.resumen(s, t.id, ym, h) }; }).filter(x => x.r.restante >= 1);
+    return `<section class="bloque">
+      <div class="entre"><h3>${punto(t.id)}${esc(t.nombre)}</h3>${estado}</div>
+      <p><span class="num grande">${f(r.restante)}</span></p>
+      ${r.estado === 'parcial' ? `<p class="chico">Ya pagaste ${f(r.pagado)} de ${f(r.total)}.</p>` : ''}
+      <div class="btns">
+        <button class="btn" data-a="pagar" data-card="${t.id}" data-ym="${r.ym}" ${hay ? '' : 'disabled'}>Ya pagué</button>
+        <button class="btn" data-a="editarTarjeta" data-id="${t.id}">Editar</button>
+      </div>
+      ${hay || siguientes.length ? `<button class="link chico" data-a="toggle" data-id="t-${t.id}" aria-expanded="${ab}">${ab ? 'Ocultar detalle' : 'Ver qué incluye y los próximos meses'}</button>` : ''}
+      ${ab ? `<div class="lista">${r.items.map(i => `<div class="fila"><span class="izq"><span>${esc(i.nombre)}</span><span class="chico">${i.tipo === 'cuota' ? `Cuota ${i.n} de ${i.de}` : 'Un pago'}</span></span><span class="der"><span class="num">${f(i.monto)}</span></span></div>`).join('')}</div>
+        ${siguientes.length ? `<div><h2 style="margin-bottom:4px">Próximos meses</h2>${siguientes.map(x => `<div class="entre chico"><span>1 de ${esc(E.mesNombre(x.ym))}</span><span class="num">${f(x.r.restante)}</span></div>`).join('')}</div>` : ''}` : ''}
+    </section>`;
+  }
+
+  function hojaTarjeta(id) {
+    const s = App.s, t = id ? E.tarjeta(s, id) : null, r = t ? E.proximoDeTarjeta(s, t.id, hoy()) : null;
+    abrirHoja(t ? 'Editar tarjeta' : 'Nueva tarjeta', `<form data-form="tarjeta" data-id="${t ? t.id : ''}" autocomplete="off">
+      ${campo('t-nombre', 'Nombre', t ? t.nombre : '', { ph: 'Visa' })}
+      ${t ? campo('t-real', `Monto real del pago del ${E.fechaCorta(r.vence)}`, r.real == null ? '' : redondo(r.real), { modo: 'decimal', ph: `Cargado: ${f(r.calculado)}`, ayuda: 'Opcional: usalo si tu resumen dice otro monto.' }) : '<p class="ayuda">Se paga el 1 de cada mes.</p>'}
+      <button class="btn prim lleno">Guardar</button>
+      ${t ? `<button type="button" class="btn peligro lleno" data-a="borrarTarjeta" data-id="${t.id}">Borrar tarjeta</button>` : ''}
+    </form>`);
   }
 
   function vCobre() {
@@ -724,13 +787,13 @@
   }
 
   function vComproBasico() {
-    const s = App.s, h = hoy(), p = E.parsearCompra(App.compro);
+    const s = App.s, h = hoy(), p = parsear(App.compro);
     let res = '';
     if (App.comproHecho) {
       if (!p.monto) res = '<p class="error">Decime cuánto sale. Por ejemplo: zapatillas 90000</p>';
       else {
         const v = E.evaluarBasico(s, p.monto, h);
-        const k = v.veredicto === 'si' ? 'bien' : v.veredicto === 'justo' ? 'ojo' : 'mal';
+        const k = v.veredicto === 'si' ? 'bien' : (v.veredicto === 'justo' || v.veredicto === 'cuotas') ? 'ojo' : 'mal';
         const a = E.clasificar(s, { nombre: p.nombre || 'Compra', monto: p.monto, cuotas: 1 }, h, { hora: horaAhora() });
         res = `<section class="veredicto ${k}"><h3>${esc(v.titulo)}</h3><p>${esc(v.detalle)}</p></section>
           <section class="bloque"><div class="entre"><h2>¿Es necesario?</h2>${pillClase(a.clase)}</div><p>${esc(a.motivo)}</p></section>
@@ -870,7 +933,8 @@
     hoy: () => (B() ? vHoyBasico() : vHoy()),
     cargar: () => (B() ? vCargarBasico() : vCargar()),
     compro: () => (B() ? vComproBasico() : vCompro()),
-    tarjetas: vTarjetas, deudas: vDeudas, repartir: vRepartir, cobre: vCobre
+    tarjetas: () => (B() ? vTarjetasBasico() : vTarjetas()),
+    deudas: vDeudas, repartir: vRepartir, cobre: vCobre
   };
   function render() {
     const v = $('vista'), t = $('tabs');
@@ -962,9 +1026,17 @@
       actualizarQueda();
     },
     /* Cargar */
+    nuevaTarjeta: () => { hojaTarjeta(null); const i = $('t-nombre'); if (i) i.focus(); },
+    editarTarjeta: d => hojaTarjeta(d.id),
+    borrarTarjeta: d => {
+      if (E.tarjetaEnUso(App.s, d.id)) { toast('Tiene compras cargadas. Borralas primero.'); return; }
+      cerrarHoja();
+      mutar(s => E.borrarTarjeta(s, d.id), 'Tarjeta borrada.');
+    },
     poneMedio: d => {
-      const p = E.parsearCompra(App.texto);
-      const alias = { visa: 'bbva visa', master: 'bbva master', naranja: 'naranja', mp: 'mercado pago', efectivo: 'efectivo', transferencia: 'transferencia', debito: 'debito' }[d.id];
+      const p = parsear(App.texto);
+      const tj = E.tarjeta(App.s, d.id);
+      const alias = B() && tj ? tj.nombre.toLowerCase() : { visa: 'bbva visa', master: 'bbva master', naranja: 'naranja', mp: 'mercado pago', efectivo: 'efectivo', transferencia: 'transferencia', debito: 'debito' }[d.id];
       const piezas = [];
       if (p.nombre) piezas.push(p.nombre.toLowerCase());
       if (p.monto) piezas.push(String(p.monto));
@@ -1023,7 +1095,7 @@
       mutar(s => E.agregarEspera(s, { nombre: p.nombre || 'Compra', monto: p.monto }, hoy()), 'Queda en espera 48 horas.');
     },
     comproCargar: () => {
-      const p = E.parsearCompra(App.compro);
+      const p = parsear(App.compro);
       App.texto = `${(p.nombre || 'compra').toLowerCase()} ${p.monto}${p.cuotas > 1 ? ` ${p.cuotas}c` : ''}${p.medio ? ' ' + E.nombreMedio(App.s, p.medio).toLowerCase() : ''} `;
       ir('cargar');
     },
@@ -1066,6 +1138,20 @@
 
   /* ---------- Formularios ---------- */
   const F = {
+    tarjeta: (form, val) => {
+      const id = form.dataset.id, nombre = val('t-nombre').trim();
+      if (!nombre) { toast('Poné un nombre.'); return; }
+      const textoReal = id ? val('t-real').trim() : '';
+      const real = textoReal ? E.parsearMonto(textoReal) : null;
+      if (textoReal && real == null) { toast('Revisá el monto.'); return; }
+      cerrarHoja();
+      mutar(s => {
+        if (id) {
+          E.renombrarTarjeta(s, id, nombre);
+          E.fijarResumenReal(s, id, E.proximoDeTarjeta(s, id, hoy()).ym, real);
+        } else E.agregarTarjeta(s, nombre);
+      }, id ? 'Tarjeta actualizada.' : 'Tarjeta agregada.');
+    },
     empezar: (form, val) => {
       const plata = E.parsearMonto(val('em-plata'));
       if (plata == null) { toast('Poné cuánta plata tenés. Puede ser 0.'); return; }
@@ -1095,13 +1181,16 @@
       mutar(s => E.registrarEntrada(s, datos), `Cobraste ${f(monto)}.`);
     },
     cargar: () => {
-      const s = App.s, p = E.parsearCompra(App.texto);
+      const s = App.s, p = parsear(App.texto);
       if (B()) {
         if (!p.nombre || !p.monto) { const i = $('cargar-texto'); if (i) i.focus(); toast(`Falta ${!p.monto ? 'el monto' : 'qué compraste'}.`); return; }
-        const a = E.clasificar(s, { nombre: p.nombre, monto: p.monto, cuotas: 1 }, hoy(), { hora: horaAhora() });
+        if (p.ambiguo) { toast('Aclará qué tarjeta fue.'); return; }
+        const medio = p.medio || 'efectivo', cuotas = E.esTarjeta(s, medio) ? p.cuotas : 1;
+        if (p.cuotas > 1 && cuotas === 1) { toast('Las cuotas van con tarjeta. Elegí cuál.'); return; }
+        const a = E.clasificar(s, { nombre: p.nombre, monto: p.monto, cuotas }, hoy(), { hora: horaAhora() });
         const n = p.nombre, m = p.monto;
         App.texto = '';
-        mutar(st => E.agregarCompra(st, { nombre: n, monto: m, cuotas: 1, medio: 'efectivo', fecha: hoy(), clase: a.clase, motivo: a.motivo, fuente: a.fuente }), `${n}: ${f(m)} guardado.`);
+        mutar(st => E.agregarCompra(st, { nombre: n, monto: m, cuotas, medio, fecha: hoy(), clase: a.clase, motivo: a.motivo, fuente: a.fuente }), `${n}: ${f(m)} guardado.`);
         const i = $('cargar-texto');
         if (i) i.focus();
         return;
@@ -1125,6 +1214,11 @@
       mutar(s => {
         const cambios = { nombre, monto, cuotas, medio, fecha: val('c-fecha') || c.fecha, clase };
         if (medio !== c.medio || (val('c-fecha') && val('c-fecha') !== c.fecha)) cambios.primerVence = undefined;
+        if (B()) {
+          const pagadas = Math.max(0, Number(val('c-pagadas')) || 0), tj = E.tarjeta(s, medio);
+          cambios.pagadas = pagadas;
+          cambios.primerVence = tj && pagadas > 0 ? E.sumarMes(E.primerVencimiento(tj, cambios.fecha), -pagadas) : null;
+        }
         if (cambio) { cambios.fuente = 'vos'; cambios.motivo = 'Lo marcaste vos.'; E.aprender(s, nombre, clase); }
         E.editarCompra(s, id, cambios);
       }, 'Compra actualizada.');
@@ -1264,8 +1358,9 @@
     if (id === 'cargar-texto') {
       App.texto = e.target.value;
       $('cargar-vista').innerHTML = previewCarga();
-      const p = E.parsearCompra(App.texto);
-      document.querySelectorAll('[data-a="poneMedio"]').forEach(c => c.classList.toggle('on', c.dataset.id === p.medio));
+      const p = parsear(App.texto);
+      const elegido = B() ? (p.medio || 'efectivo') : p.medio;
+      document.querySelectorAll('[data-a="poneMedio"]').forEach(c => c.classList.toggle('on', c.dataset.id === elegido));
     } else if (id === 'compro-texto') {
       App.compro = e.target.value; App.comproHecho = false;
     } else if (id === 'rep-monto') {

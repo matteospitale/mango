@@ -93,7 +93,25 @@
 
   E.MEDIOS_SIN_TARJETA = { efectivo: 'Efectivo', transferencia: 'Transferencia', debito: 'Débito' };
 
-  E.parsearCompra = texto => {
+  /* Reconoce las tarjetas que cargó cada persona: por su nombre completo o por una palabra que no se repita entre ellas. */
+  const aliasDeTarjetas = tarjetas => {
+    const genericas = new Set(['tarjeta', 'credito', 'debito', 'banco', 'pago', 'del']);
+    const cuenta = {};
+    const listas = tarjetas.map(t => ({ id: t.id, palabras: normalizar(t.nombre).split(/\s+/).filter(Boolean) }));
+    listas.forEach(t => new Set(t.palabras).forEach(p => { cuenta[p] = (cuenta[p] || 0) + 1; }));
+    const lista = ALIAS_MEDIO.filter(a => E.MEDIOS_SIN_TARJETA[a.id]).slice();
+    listas.forEach(t => {
+      lista.push({ palabras: t.palabras, id: t.id });
+      t.palabras.forEach(p => {
+        if (p.length >= 3 && !genericas.has(p)) lista.push({ palabras: [p], id: cuenta[p] === 1 ? t.id : '?' + p });
+      });
+      if (t.palabras.join(' ') === 'mercado pago') lista.push({ palabras: ['mp'], id: t.id });
+    });
+    return lista.sort((x, y) => y.palabras.length - x.palabras.length);
+  };
+
+  E.parsearCompra = (texto, tarjetas) => {
+    const alias = tarjetas ? aliasDeTarjetas(tarjetas) : ALIAS_MEDIO;
     const r = { nombre: '', monto: null, cuotas: 1, medio: null, faltan: [], error: null, ok: false };
     const tokens = (texto || '').normalize('NFC').replace(/\$\s+/g, '$').trim().split(/\s+/).filter(Boolean);
     let norm = tokens.map(normalizar);
@@ -102,7 +120,7 @@
     /* Medio de pago: el último que aparezca, porque suele ir al final. Si hay dos que terminan igual, gana el más largo ("bbva visa" antes que "visa"). */
     let medio = null;
     for (let i = 0; i < norm.length; i++) {
-      for (const a of ALIAS_MEDIO) {
+      for (const a of alias) {
         const n = a.palabras.length;
         if (i + n <= norm.length && a.palabras.every((p, k) => norm[i + k] === p)) {
           const fin = i + n;
@@ -111,7 +129,7 @@
       }
     }
     if (medio) {
-      if (medio.id === '?bbva') r.ambiguo = 'bbva'; else r.medio = medio.id;
+      if (medio.id.startsWith('?')) r.ambiguo = medio.id.slice(1); else r.medio = medio.id;
       quitar(medio.i, medio.n);
     }
 
@@ -175,7 +193,8 @@
       if (!t) continue;
       const primero = c.primerVence || E.primerVencimiento(t, c.fecha);
       const cuota = c.monto / c.cuotas;
-      for (let i = 0; i < c.cuotas; i++) {
+      /* Las cuotas que ya estaban pagadas al cargar la compra no vuelven a aparecer como deuda. */
+      for (let i = c.pagadas || 0; i < c.cuotas; i++) {
         poner(`${c.medio}:${sumarMes(primero, i)}`, { nombre: c.nombre, monto: cuota, n: i + 1, de: c.cuotas, compraId: c.id, tipo: c.cuotas > 1 ? 'cuota' : 'compra' });
       }
     }
@@ -845,8 +864,47 @@
   E.modo = s => (s.config && s.config.modo) || 'completo';
 
   /* Cuánto entra y sale por mes, mirando hasta los últimos 90 días. Con menos de 14 días de historia no se estima. */
+  E.agregarTarjeta = (s, nombre) => {
+    /* En la versión básica todas las tarjetas se pagan el 1: lo de este mes se paga el 1 del mes que viene. */
+    const t = { id: E.uid(), nombre: nombre.trim(), cierre: 31, vence: 1 };
+    s.tarjetas.push(t);
+    E.tocar(s);
+    return t;
+  };
+  E.renombrarTarjeta = (s, id, nombre) => {
+    const t = E.tarjeta(s, id);
+    if (t) t.nombre = nombre.trim();
+    E.tocar(s);
+  };
+  E.tarjetaEnUso = (s, id) => s.compras.some(c => c.medio === id);
+  E.borrarTarjeta = (s, id) => {
+    s.tarjetas = s.tarjetas.filter(t => t.id !== id);
+    Object.keys(s.resumenes).filter(k => k.startsWith(id + ':')).forEach(k => { delete s.resumenes[k]; });
+    E.tocar(s);
+  };
+
+  /* El próximo 1 con algo para pagar, sumando todas las tarjetas. */
+  E.proximoPagoBasico = (s, hoy = E.hoyISO()) => {
+    const rs = s.tarjetas.map(t => E.proximoDeTarjeta(s, t.id, hoy)).filter(r => r.restante >= 1);
+    if (!rs.length) return { total: 0, vence: null, porTarjeta: [], vencido: false };
+    const vence = rs.map(r => r.vence).sort()[0];
+    const del = rs.filter(r => r.vence === vence);
+    return { vence, total: suma(del, r => r.restante), porTarjeta: del, vencido: vence < hoy };
+  };
+
+  E.comprometidoBasico = (s, hoy = E.hoyISO(), n = 6) => {
+    const filas = [];
+    for (let i = 0; i <= n; i++) {
+      const ym = sumarMes(ymDe(hoy), i);
+      const por = s.tarjetas.map(t => E.resumen(s, t.id, ym, hoy)).filter(r => r.restante >= 1);
+      const total = suma(por, r => r.restante);
+      if (total >= 1) filas.push({ ym, vence: fechaEn(ym, 1), total, por, vencido: fechaEn(ym, 1) < hoy });
+    }
+    return filas;
+  };
+
   E.ritmoBasico = (s, hoy = E.hoyISO()) => {
-    const gastos = s.compras.map(c => ({ fecha: c.fecha, monto: c.monto }));
+    const gastos = s.compras.map(c => ({ fecha: c.fecha, monto: montoQueCuenta(c) }));
     const cobros = (s.otrosIngresos || []).map(c => ({ fecha: c.fecha, monto: c.monto }));
     const todas = [...gastos, ...cobros].map(x => x.fecha).sort();
     if (!todas.length) return { dias: 0, gastoMes: null, cobroMes: null, ahorroMes: null };
@@ -862,25 +920,38 @@
     const ym = ymDe(hoy);
     const gastos = s.compras.filter(c => ymDe(c.fecha) === ym);
     const cobros = (s.otrosIngresos || []).filter(c => ymDe(c.fecha) === ym);
-    const gastado = suma(gastos, c => c.monto), cobrado = suma(cobros, c => c.monto);
-    const noNec = suma(gastos.filter(c => c.clase !== 'necesario'), c => c.monto);
+    const gastado = suma(gastos, montoQueCuenta), cobrado = suma(cobros, c => c.monto);
+    const noNec = suma(gastos.filter(c => c.clase !== 'necesario'), montoQueCuenta);
     const balance = cobrado - gastado;
     let estado = 'bien', etiqueta = 'Vas bien';
     if (gastado === 0 && cobrado === 0) { estado = 'neutro'; etiqueta = 'Sin movimientos'; }
     else if (balance < 0) { estado = 'mal'; etiqueta = 'Gastás más de lo que cobrás'; }
-    return { ym, tengo: E.saldoCaja(s), gastado, cobrado, balance, estado, etiqueta, pctNoNecesario: gastado > 0 ? Math.round((noNec / gastado) * 100) : null };
+    const tengo = E.saldoCaja(s), pago = E.proximoPagoBasico(s, hoy);
+    return { ym, tengo, pago, libre: tengo - pago.total, gastado, cobrado, balance, estado, etiqueta, pctNoNecesario: gastado > 0 ? Math.round((noNec / gastado) * 100) : null };
   };
 
   E.evaluarBasico = (s, monto, hoy = E.hoyISO()) => {
-    const tengo = E.saldoCaja(s), r = E.ritmoBasico(s, hoy);
-    if (monto <= tengo) {
-      const queda = tengo - monto;
+    const tengo = E.saldoCaja(s), r = E.ritmoBasico(s, hoy), pago = E.proximoPagoBasico(s, hoy);
+    const libre = tengo - pago.total;
+    const separado = pago.total >= 1 ? ` Ya descontaste ${E.fmt(pago.total)} de tarjetas del ${fechaCorta(pago.vence)}.` : '';
+    if (monto <= libre) {
+      const queda = libre - monto;
       if (r.gastoMes != null && queda < r.gastoMes) {
-        return { veredicto: 'justo', titulo: 'Te alcanza, pero quedás justo', detalle: `Te quedarían ${E.fmt(queda)} y gastás unos ${E.fmt(r.gastoMes)} por mes.` };
+        return { veredicto: 'justo', titulo: 'Te alcanza, pero quedás justo', detalle: `Te quedarían ${E.fmt(queda)} y gastás unos ${E.fmt(r.gastoMes)} por mes.${separado}` };
       }
-      return { veredicto: 'si', titulo: 'Sí, te alcanza', detalle: `Te quedarían ${E.fmt(queda)}.` };
+      return { veredicto: 'si', titulo: 'Sí, te alcanza', detalle: `Te quedarían ${E.fmt(queda)}.${separado}` };
     }
-    const falta = monto - tengo;
+    if (s.tarjetas.length && r.ahorroMes != null && r.ahorroMes >= 1) {
+      const m0 = ymDe(hoy);
+      const comprometido = ym => suma(s.tarjetas.map(t => E.resumen(s, t.id, ym, hoy)), x => x.restante);
+      for (const n of [3, 6, 12]) {
+        const cuota = monto / n;
+        let entra = true;
+        for (let i = 1; i <= n; i++) if (cuota > r.ahorroMes - comprometido(sumarMes(m0, i))) { entra = false; break; }
+        if (entra) return { veredicto: 'cuotas', titulo: `En 1 pago no. En ${n} cuotas sí`, detalle: `Serían ${n} cuotas de ${E.fmt(cuota)} con tarjeta. Te sobran unos ${E.fmt(r.ahorroMes)} por mes.${separado}` };
+      }
+    }
+    const falta = monto - Math.max(0, libre);
     if (r.ahorroMes != null && r.ahorroMes >= 1) {
       const meses = Math.ceil(falta / r.ahorroMes);
       const cuando = sumarMes(ymDe(hoy), meses);
