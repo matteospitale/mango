@@ -141,8 +141,8 @@
       ] }
     ] },
     peugeot: { buscar: 'visa', nombre: 'Plan Peugeot (tu mitad)', total: 486125.19, monto: 243062.60, desde: '2026-12' },
-    /* De Mercado Pago solo son tuyas estas 4 compras: lo demás del resumen no es tuyo. */
-    mp: { buscar: 'mp', ym: '2026-10', total: 229996.48, totalTarjeta: 752335.97, pagado: '2026-10-17', cierre: 12, cuotas: [
+    /* De Mercado Pago son tuyas estas 4 compras y la cuota 2 de 2 de Mercado Libre ($50.850): lo demás del resumen no es tuyo. */
+    mp: { buscar: 'mp', ym: '2026-10', total: 280846.48, totalTarjeta: 752335.97, pagado: '2026-10-17', cierre: 12, cuotas: [
       { nombre: 'Newsan', cuota: 54188.77, n: 5, de: 9, fecha: '2026-05-13' },
       { nombre: 'Kiosco Finca', cuota: 108333.83, n: 2, de: 3, fecha: '2026-08-19' },
       { nombre: 'Zivals', cuota: 46973.88, n: 1, de: 3, fecha: '2026-09-21' },
@@ -186,13 +186,13 @@
         </section>
         <section class="bloque">
           <div class="entre"><h2>${punto(tmp.id)}${esc(tmp.nombre)}</h2>${pill('azul', 'La pagó tu papá')}</div>
-          <p class="chico">El resumen de octubre lo pagó tu papá. Tuyas son solo Newsan, Kiosco Finca, Zivals y Hadouken (${f(im.mp.total)}): eso se suma a lo que le debés. El resto de la tarjeta no es tuyo y no lo cuento.</p>
+          <p class="chico">El resumen de octubre lo pagó tu papá. Tuyas son Newsan, Kiosco Finca, Zivals, Hadouken y la última cuota de Mercado Libre (${f(im.mp.total)}): eso se suma a lo que le debés. El resto de la tarjeta no es tuyo y no lo cuento.</p>
           <div class="lista">${filasCuotas(s, tmp, im.mp.cuotas, im.mp.ym)}</div>
         </section>
         <section class="bloque">
           <div class="entre"><h2>Le debés a tu papá</h2><span class="num v-mal">+${f(im.mp.total + im.naranja.monto)}</span></div>
           <div class="lista">
-            <div class="fila"><span class="izq"><span class="nom">Mercado Pago de octubre</span><span class="chico">Newsan, Kiosco Finca, Zivals y Hadouken</span></span><span class="der"><span class="num">${f(im.mp.total)}</span></span></div>
+            <div class="fila"><span class="izq"><span class="nom">Mercado Pago de octubre</span><span class="chico">Newsan, Kiosco Finca, Zivals, Hadouken y Mercado Libre 2 de 2</span></span><span class="der"><span class="num">${f(im.mp.total)}</span></span></div>
             <div class="fila"><span class="izq"><span class="nom">Naranja</span><span class="chico">${esc(im.naranja.detalle)}</span></span><span class="der"><span class="num">${f(im.naranja.monto)}</span></span></div>
           </div>
           <p class="chico">${papa ? `Se suma a ${esc(papa.nombre)}, que hoy está en ${deudaHoy}.` : 'Creo la deuda "Papá".'}</p>
@@ -212,12 +212,12 @@
   /* Un resumen que ya estaba pagado antes de usar Mango: queda saldado sin tocar tu plata. */
   /* Corrección: la primera versión sumaba a tu papá el resumen entero de Mercado Pago. Queda solo tu parte. */
   const corregirPapa = s => {
-    const id = 'papa-solo-lo-mio';
+    const id = 'papa-con-meli';
     if (!s || (s.config.importados || []).includes(id) || !(s.config.importados || []).includes(IMPORTE.id)) return false;
     const tmp = buscarTarjeta(s, IMPORTE.mp.buscar), key = tmp ? `${tmp.id}:${IMPORTE.mp.ym}` : null, rec = key && s.resumenes[key];
-    const pago = rec && (rec.pagos || []).find(p => p.nota === 'Lo pagó tu papá' && Math.abs(p.monto - IMPORTE.mp.totalTarjeta) < 1);
+    const pago = rec && (rec.pagos || []).find(p => (p.nota || '').startsWith('Lo pagó tu papá') && Math.abs(p.monto - IMPORTE.mp.total) >= 1);
     if (pago) {
-      pago.monto = IMPORTE.mp.total; pago.nota = 'Lo pagó tu papá (tus 4 compras)';
+      pago.monto = IMPORTE.mp.total; pago.nota = 'Lo pagó tu papá (tus compras)';
       rec.real = IMPORTE.mp.total;
       for (const d of s.deudas) for (const m of d.movs) if (m.ref === pago.id) m.monto = IMPORTE.mp.total;
     }
@@ -252,10 +252,10 @@
     tmp.cierre = im.mp.cierre; tmp.cierreEstimado = false;
     s.resumenes[`${tmp.id}:${im.mp.ym}`] = s.resumenes[`${tmp.id}:${im.mp.ym}`] || {};
     s.resumenes[`${tmp.id}:${im.mp.ym}`].real = im.mp.total;
-    E.pagarResumen(s, { cardId: tmp.id, ym: im.mp.ym, monto: im.mp.total, fecha: im.mp.pagado, quien: papa.id, nota: 'Lo pagó tu papá (tus 4 compras)' });
+    E.pagarResumen(s, { cardId: tmp.id, ym: im.mp.ym, monto: im.mp.total, fecha: im.mp.pagado, quien: papa.id, nota: 'Lo pagó tu papá (tus compras)' });
     sumarCuotas(s, tmp, im.mp.cuotas, im.mp.ym);
     E.sumarDeuda(s, { id: papa.id, monto: im.naranja.monto, fecha: hoy(), nota: `Naranja que pagó (${im.naranja.detalle})` });
-    s.config.importados = [...(s.config.importados || []).filter(x => x !== im.viejo), im.viejo, im.id, 'papa-solo-lo-mio'];
+    s.config.importados = [...(s.config.importados || []).filter(x => x !== im.viejo), im.viejo, im.id, 'papa-solo-lo-mio', 'papa-con-meli'];
     E.tocar(s);
   };
 
@@ -1315,7 +1315,7 @@
   };
 
   function render() {
-    if (App.fase === 'app' && App.s && corregirPapa(App.s)) { guardar(); setTimeout(() => toast(`Corregido: a tu papá le sumo solo tus compras de Mercado Pago (${f(IMPORTE.mp.total)}).`), 0); }
+    if (App.fase === 'app' && App.s && corregirPapa(App.s)) { guardar(); setTimeout(() => toast(`Listo: lo de Mercado Pago que le debés a tu papá ahora es ${f(IMPORTE.mp.total)}, con los $50.850 de Mercado Libre.`), 0); }
     const v = $('vista'), t = $('tabs');
     const fuera = { cargando: vCargando, login: vLogin, sinAcceso: vSinAcceso, error: vErrorNube, sinDatos: vInicio }[App.fase];
     if (fuera) { v.innerHTML = fuera(); v.classList.remove('entra'); t.hidden = true; App.faseVista = App.fase; return; }

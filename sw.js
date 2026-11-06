@@ -1,5 +1,5 @@
 /* Deja la app disponible sin conexión. Con internet trae siempre la última versión. */
-const VERSION = 'mango-8';
+const VERSION = 'mango-9';
 const ARCHIVOS = ['./', 'index.html', 'engine.js', 'nube.js', 'ui.js', 'manifest.webmanifest', 'icono-180.png', 'icono-192.png', 'icono-512.png'];
 const FIREBASE = 'https://www.gstatic.com/firebasejs/';
 
