@@ -358,6 +358,12 @@
     return { total: deCompras + fijos, compras: deCompras, fijos, lista: compras };
   };
 
+  /* El próximo día que cobrás tu sueldo (por defecto el 10). */
+  E.proximoCobro = (s, hoy = E.hoyISO()) => {
+    const dia = Number(s.config.sueldoDia) || 10, { d } = partes(hoy), ym = ymDe(hoy);
+    return d < dia ? fechaEn(ym, dia) : fechaEn(sumarMes(ym, 1), dia);
+  };
+
   E.podes = (s, hoy = E.hoyISO()) => {
     const ym = ymDe(hoy), tope = E.topeMes(s, hoy), g = E.gastoMes(s, ym);
     const gastadoHoy = suma(g.lista.filter(c => c.fecha === hoy), montoQueCuenta);
@@ -366,13 +372,15 @@
     const reserva = suma(delMes.filter(r => r.quien === 'yo'), r => r.restante);
     const reservaTodas = suma(delMes, r => r.restante);
     const restanteTope = Math.max(0, tope - g.total);
-    const libreCaja = Math.max(0, caja - reserva);
-    const mes = Math.min(restanteTope, libreCaja);
-    const { d } = partes(hoy);
-    const dias = diasMes(ym) - d + 1;
-    const porDia = (mes + gastadoHoy) / dias;
-    const deHoy = Math.max(0, porDia - gastadoHoy);
-    return { ym, tope, gastado: g.total, gastadoHoy, caja, reserva, reservaTodas, restanteTope, libreCaja, mes, hoy: deHoy, dias, porDia, limitadoPorCaja: libreCaja < restanteTope };
+    /* Tu efectivo es para vivir hasta que cobres. Las tarjetas y las deudas se pagan con lo que entra del trabajo, no con esto. */
+    const libreCaja = Math.max(0, caja);
+    const mes = libreCaja;
+    const cobro = E.proximoCobro(s, hoy);
+    const dias = Math.max(1, difDias(hoy, cobro));
+    const gastadoHoyCaja = suma(g.lista.filter(c => c.fecha === hoy && !E.esTarjeta(s, c.medio)), montoQueCuenta);
+    const porDia = (mes + gastadoHoyCaja) / dias;
+    const deHoy = Math.max(0, porDia - gastadoHoyCaja);
+    return { ym, tope, gastado: g.total, gastadoHoy, caja, reserva, reservaTodas, restanteTope, libreCaja, mes, hoy: deHoy, dias, porDia, cobro, limitadoPorCaja: false };
   };
 
   E.comoVas = (s, hoy = E.hoyISO()) => {
@@ -384,12 +392,15 @@
     const usado = p.tope > 0 ? p.gastado / p.tope : 0;
     const ritmo = d / dm;
     let estado, etiqueta, frase;
-    if (p.gastado > p.tope) {
+    if (p.tope < 1 && E.ingresoPrudente(s, hoy).monto >= 1) {
+      estado = 'mal'; etiqueta = 'Sin margen';
+      frase = `Lo que cobrás fijo ya se va en cuotas y mensuales, así que no queda margen para compras nuevas. Este mes llevás ${E.fmt(p.gastado)}.`;
+    } else if (p.gastado > p.tope) {
       estado = 'mal'; etiqueta = 'Te pasaste';
       frase = `Gastaste ${E.fmt(p.gastado)}: ${E.fmt(p.gastado - p.tope)} más que tu tope de ${E.fmt(p.tope)}.`;
     } else if (p.mes <= 0 && p.gastado < p.tope) {
-      estado = 'mal'; etiqueta = 'Sin plata libre';
-      frase = `Lo que tenés (${E.fmt(p.caja)}) ya está reservado para tarjetas de este mes.`;
+      estado = 'mal'; etiqueta = 'Sin efectivo';
+      frase = `No te queda efectivo hasta que cobres el ${fechaCorta(p.cobro)}.`;
     } else if (p.gastado > esperado * 1.25 && p.gastado > 0) {
       estado = 'mal'; etiqueta = 'Vas rápido';
       frase = `Gastaste ${E.fmt(p.gastado)}. A esta altura del mes ibas a ir por ${E.fmt(esperado)}.`;
@@ -398,7 +409,7 @@
       frase = `Gastaste ${E.fmt(p.gastado)}, un poco más de los ${E.fmt(esperado)} esperados a hoy.`;
     } else {
       estado = 'bien'; etiqueta = 'Vas bien';
-      frase = `Gastaste ${E.fmt(p.gastado)} de ${E.fmt(p.tope)}. Te quedan ${E.fmt(p.mes)} para ${p.dias} ${p.dias === 1 ? 'día' : 'días'}.`;
+      frase = `Gastaste ${E.fmt(p.gastado)} de tu tope de ${E.fmt(p.tope)}. En efectivo tenés ${E.fmt(p.mes)} para ${p.dias} ${p.dias === 1 ? 'día' : 'días'}, hasta que cobres.`;
     }
     return { estado, etiqueta, frase, usado, ritmo, pctNoNecesario, gastado: p.gastado, tope: p.tope };
   };
@@ -768,8 +779,11 @@
       const ym = sumarMes(m0, i);
       let disponible, salida = 0, tarjetas = 0;
       if (i === 0) {
+        /* Este mes: las tarjetas que faltan se pagan con el sueldo si todavía no cobraste. Tu efectivo queda para vivir. */
+        const { d } = partes(hoy), cobrado = suma((s.cobros.pagos || []).filter(x => ymDe(x.fecha) === m0), x => x.monto) + suma((s.otrosIngresos || []).filter(x => x.origen === 'otroTrabajo' && ymDe(x.fecha) === m0), x => x.monto);
+        const pendiente = d < (Number(s.config.sueldoDia) || 10) && cobrado < 1 ? ingreso : 0;
         tarjetas = p.reservaTodas;
-        disponible = p.caja - p.reservaTodas - p.restanteTope + extra;
+        disponible = pendiente - p.reservaTodas + extra;
       } else {
         const sm = salidaMes(s, ym, hoy);
         salida = sm.salida; tarjetas = sm.tarjetas;
