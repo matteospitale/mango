@@ -79,7 +79,10 @@ p { margin: 0; }
 .aro { width: 56px; height: 56px; border-radius: 99px; display: grid; place-items: center; }
 .aro svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .num-fila { font-size: 18px; }
-.logo-t { width: 30px; height: 18px; object-fit: contain; flex: none; display: inline-block; vertical-align: -4px; margin-right: 8px; }
+.logo-t { width: 30px; height: 19px; flex: none; display: inline-flex; align-items: center; justify-content: center; vertical-align: -4px; margin-right: 8px; border-radius: 4px; background: #fff; padding: 2px 3px; box-sizing: border-box; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.logo-t img { max-width: 100%; max-height: 100%; display: block; }
+.nom:has(> .logo-t), .chip:has(> .logo-t) { display: inline-flex; align-items: center; }
+.chip:has(> .logo-t) { vertical-align: middle; }
 .totales-cuotas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .totales-cuotas > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: 16px; background: var(--relleno); border: 1px solid var(--linea); }
 .tabla-compras td, .tabla-compras th { text-align: left; white-space: nowrap; }
@@ -92,7 +95,7 @@ p { margin: 0; }
 .tabla-compras td:last-child, .tabla-compras th:last-child { text-align: right; }
 .tabla-compras tbody tr { cursor: pointer; }
 .tabla-compras tbody tr:hover td { background: rgba(255,255,255,.05); }
-.chip .logo-t { width: 24px; height: 14px; vertical-align: -2px; margin-right: 6px; }
+.chip .logo-t { width: 26px; height: 17px; vertical-align: -3px; margin-right: 6px; }
 .punto { width: 9px; height: 9px; border-radius: 99px; display: inline-block; margin-right: 6px; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,.14); }
 
 /* Bloques */

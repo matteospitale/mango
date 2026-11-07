@@ -42,7 +42,7 @@
   const PALETA_TARJETAS = ['#FF9E1B', '#4CAF50', '#F4D03F', '#6FC3DF', '#FF7A6B', '#B8E986'];
   const colorTarjeta = id => COLORES_TARJETA[id] || PALETA_TARJETAS[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETA_TARJETAS.length];
   /* Logo chiquito de cada tarjeta. Si no es una que conozco, queda el puntito de color. */
-  const LOGOS = Object.fromEntries(['visa', 'master', 'mp', 'naranja'].map(k => [k, `<img class="logo-t" src="logo-${k}.png" alt="" aria-hidden="true">`]));
+  const LOGOS = Object.fromEntries(['visa', 'master', 'mp', 'naranja'].map(k => [k, `<span class="logo-t" aria-hidden="true"><img src="logo-${k}.png" alt=""></span>`]));
   const marcaTarjeta = id => {
     const t = App.s && App.s.tarjetas && App.s.tarjetas.find(x => x.id === id);
     const n = E.normalizar(((t && t.nombre) || '') + ' ' + id);
