@@ -85,6 +85,8 @@ p { margin: 0; }
 .tabla-compras { table-layout: fixed; }
 .tabla-compras th:nth-child(1) { width: 34%; } .tabla-compras th:nth-child(2) { width: 17%; } .tabla-compras th:nth-child(3) { width: 21%; } .tabla-compras th:nth-child(4) { width: 15%; } .tabla-compras th:nth-child(5) { width: 13%; }
 .tabla-compras td { overflow: hidden; text-overflow: ellipsis; }
+.tabla-compras td:first-child, .tabla-cuotas td:first-child { overflow: visible; padding-left: 3px; }
+.tabla .nom { display: inline-flex; align-items: center; }
 .totales-cuotas .num-fila { font-size: 16px; }
 @media (min-width: 960px) { .totales-cuotas .num-fila { font-size: 19px; } }
 .tabla-compras td:first-child { white-space: normal; }

@@ -581,7 +581,8 @@
   function vCargar() {
     const s = App.s, h = hoy();
     const enCurso = new Set(s.compras.filter(c => { const e = E.estadoCuotas(s, c, h); return e && e.quedan > 0; }).map(c => c.id));
-    const compras = [...s.compras].filter(c => !enCurso.has(c.id)).sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 60);
+    /* El filtro de tarjeta de Cuotas en curso también filtra las compras de abajo. */
+    const compras = [...s.compras].filter(c => !enCurso.has(c.id) && (!App.filtroCuotas || c.medio === App.filtroCuotas)).sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 60);
     const grupos = [];
     for (const c of compras) {
       const titulo = c.fecha === h ? 'Hoy' : c.fecha === E.sumarDias(h, -1) ? 'Ayer' : (c.fuente === 'notion' ? 'Cuotas que traje de tu Notion' : c.fuente === 'resumen' ? 'Cuotas de tus resúmenes' : E.fechaLarga(c.fecha));
@@ -1144,7 +1145,7 @@
 
   function vCargarBasico() {
     const s = App.s, p = parsear(App.texto);
-    const compras =[...s.compras].sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 40);
+    const compras = [...s.compras].filter(c => !App.filtroCuotas || c.medio === App.filtroCuotas).sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0)).slice(0, 40);
     return `<header class="cab"><div><h1>Gasté</h1></div></header>
       <form class="bloque" data-form="cargar" autocomplete="off">
         <div class="campo">
