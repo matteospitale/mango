@@ -383,7 +383,7 @@
   /* Si da $0, decir por qué: o ya gastaste tu tope del mes, o tu plata está reservada para tarjetas. */
   const porQueCero = (s, p, h) => {
     if (p.hoy >= 1) return '';
-    return 'No te queda efectivo para lo que resta del mes.';
+    return `Mango tiene registrado que te quedan ${f(p.caja)}.`;
   };
 
   function vHoy() {
@@ -405,6 +405,7 @@
         <span class="heroe-et">${p.hoy < 1 && !sinTope ? 'Hoy no te queda para gastar' : 'Hoy podés gastar'}</span>
         <span class="heroe-num num" data-contar="${Math.round(p.hoy)}">${f(p.hoy)}</span>
         <span class="heroe-pie">${esc(sinTope ? 'Falta saber cuánto cobrás' : porQueCero(s, p, h) || `${p.gastadoHoyCaja >= 1 ? `Hoy gastaste ${f(p.gastadoHoyCaja)}. ` : ''}Tenés ${f(p.caja)} para los ${p.dias} ${p.dias === 1 ? 'día' : 'días'} que quedan del mes`)}</span>
+        ${p.caja < 1 ? '<span class="btns" style="justify-content:center;margin-top:6px"><button class="btn mini" data-a="ajustes">No es así, corregir mi plata</button><button class="btn mini" data-a="movimientos">Ver qué la bajó</button></span>' : ''}
       </section>
       <nav class="accesos" aria-label="Accesos rápidos">
         <button class="acceso" data-a="ir" data-tab="cargar"><span class="aro">${icono('cargar')}</span>Cargar</button>
