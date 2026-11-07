@@ -166,6 +166,70 @@
     const fin = E.sumarMes(ym, quedan), mesFin = fin.slice(0, 4) === hoy().slice(0, 4) ? E.mesNombre(fin) : E.mesAnio(fin);
     return `<div class="fila"><span class="izq"><span class="nom">${esc(q.nombre)}</span><span class="chico">${quedan === 1 ? `Te queda 1 cuota: termina en ${esc(mesFin)}` : `Te quedan ${quedan} cuotas: termina en ${esc(mesFin)}`}${ya ? ' · ya la tenías, no la repito' : ''}</span></span><span class="der"><span class="num">${f(q.cuota)}</span></span></div>`;
   }).join('');
+  /* ---------- Consumos de Visa y Master desde el cierre del 22/10 (de tus capturas del 7/11) ----------
+     Van al resumen que cierra el 19/11 y vence el 3/12. Las cuotas que ya tenías cargadas no se repiten. */
+  const CONSUMOS = {
+    id: 'consumos-bbva-nov26',
+    titulo: 'Lo que gastaste en Visa y Master',
+    tarjetas: [
+      { buscar: 'visa', banco: 715144.78, previas: 83373.33, items: [
+        ['2026-11-06', 'Uber', 9002], ['2026-11-06', 'Black Torino', 39500, 3], ['2026-11-05', 'Hoyts', 19000], ['2026-11-05', 'Catuki app', 7350],
+        ['2026-11-05', 'Uber', 5904], ['2026-11-05', 'Cabify', 11993.71], ['2026-11-04', 'Uber', 3668], ['2026-11-04', 'Paseo del Jockey (KF164)', 31493],
+        ['2026-11-03', 'Uber', 7218], ['2026-11-02', 'Uber', 6847], ['2026-11-02', 'PedidosYa Risata Nueva', 8070], ['2026-11-02', 'Uber', 7623],
+        ['2026-11-02', 'PedidosYa Risata Nueva', 5197.5], ['2026-11-01', 'Burger King Colón', 22500], ['2026-10-31', 'Pablo Andrés Costa', 30492.15],
+        ['2026-10-27', 'Alpogo Tickets', 33034.44, 3], ['2026-10-27', 'Alpogo Tickets', 32200], ['2026-10-25', 'Farmacia SV', 15689], ['2026-10-24', 'Rappi', 37563],
+        ['2026-10-24', 'Uber Eats', 16611], ['2026-10-24', 'El Balcón', 42650], ['2026-10-23', 'El Balcón', 14112, 2], ['2026-10-23', 'Buscalibre', 19309.15, 3],
+        ['2026-10-23', 'Sanatorio Allende', 58399.51, 3], ['2026-10-23', 'Café de Barrio', 6580], ['2026-10-23', 'Maidana Libros', 68310], ['2026-10-22', 'PedidosYa Leroma Valle', 11450],
+        ['2026-09-19', 'Vaqueria', 45266.66, 3, 2]
+      ] },
+      { buscar: 'master', banco: 77609.60, previas: 49729.60, items: [
+        ['2026-11-06', 'Mercado Libre', 20990], ['2026-10-30', 'PedidosYa Plus', 6890]
+      ] }
+    ]
+  };
+  const ymConsumos = '2026-12';
+  const consumoPendiente = s => !((s.config.importados || []).includes(CONSUMOS.id)) && CONSUMOS.tarjetas.every(x => buscarTarjeta(s, x.buscar));
+  const yaEstaConsumo = (s, medio, [fecha, nombre, cuota, n = 1]) => s.compras.some(c => c.medio === medio && c.fecha === fecha && c.cuotas === n && Math.abs(c.monto / c.cuotas - cuota) < 2);
+  const avisoConsumos = s => consumoPendiente(s)
+    ? `<div class="aviso azul"><strong>${esc(CONSUMOS.titulo)}</strong><span>Los consumos desde el 22/10 que me pasaste: van al resumen que vence el 3/12. Revisalos antes de cargarlos.</span><button class="link" data-a="verConsumos">Revisar y cargar</button></div>`
+    : '';
+  function hojaConsumos() {
+    const s = App.s;
+    const bloques = CONSUMOS.tarjetas.map(x => {
+      const t = buscarTarjeta(s, x.buscar);
+      const filas = x.items.map(it => {
+        const [fecha, nombre, cuota, n = 1, va = 1] = it, ya = yaEstaConsumo(s, t.id, it);
+        const det = n > 1 ? `cuota ${va} de ${n} · total ${f(cuota * n)}` : '1 pago';
+        return `<div class="fila"><span class="izq"><span class="nom">${esc(nombre)}</span><span class="chico">${E.fechaCorta(fecha)} · ${det}${ya ? ' · ya estaba, no la repito' : ''}</span></span><span class="der"><span class="num">${f(cuota)}</span></span></div>`;
+      }).join('');
+      const suma = x.items.reduce((a, it) => a + it[2], 0);
+      return `<section class="bloque">
+          <div class="entre"><h2>${punto(t.id)}${esc(t.nombre)}</h2><span class="num">${f(suma)}</span></div>
+          <p class="chico">El banco dice ${f(x.banco)}: estos ${f(suma)} más ${f(x.previas)} de cuotas que ya tenías.${Math.abs(x.banco - suma - x.previas) >= 1 ? ` Faltan ${f(x.banco - suma - x.previas)} que quedaron escondidos en "Mostrar más".` : ' Coincide justo.'}</p>
+          <div class="lista">${filas}</div>
+        </section>`;
+    }).join('');
+    abrirHoja(CONSUMOS.titulo, `<form data-form="consumos">
+        ${bloques}
+        <p class="ayuda">Trigital, Plataforma 10 y Jetsmart también aparecen en tus capturas, pero ya los tenías cargados: no los repito.</p>
+        <button class="btn prim lleno">Cargar</button>
+        <button type="button" class="btn lleno" data-a="descartarConsumos">No cargar</button>
+      </form>`, 'Van al resumen que cierra el 19/11 y vence el 3/12.');
+  }
+  const aplicarConsumos = s => {
+    for (const x of CONSUMOS.tarjetas) {
+      const t = buscarTarjeta(s, x.buscar);
+      for (const it of x.items) {
+        if (yaEstaConsumo(s, t.id, it)) continue;
+        const [fecha, nombre, cuota, n = 1, va = 1] = it;
+        const monto = Math.round(cuota * n * 100) / 100;
+        const a = E.clasificar(s, { nombre, monto, cuotas: n }, fecha);
+        s.compras.push({ id: E.uid(), nombre, monto, cuotas: n, medio: t.id, fecha, texto: '', clase: a.clase, motivo: a.motivo, fuente: a.fuente, primerVence: E.sumarMes(ymConsumos, -(va - 1)), pagadas: va - 1 });
+      }
+    }
+    s.config.importados = [...(s.config.importados || []), CONSUMOS.id];
+    E.tocar(s);
+  };
   function hojaImporte() {
     const s = App.s, im = IMPORTE, papa = buscarPapa(s);
     const bbva = im.bbva.tarjetas.map(x => {
@@ -288,7 +352,7 @@
     const avisos = [];
     const sinTope = E.topeEsAuto(s) && p.tope < 1;
     if (App.errorGuardado) avisos.push(`<div class="aviso mal"><strong>No se pudo guardar.</strong> Revisá tu conexión y volvé a intentar.</div>`);
-    avisos.push(avisoImporte(s));
+    avisos.push(avisoImporte(s), avisoConsumos(s));
     return `
       ${saludo(s, h)}
       ${avisos.join('')}
@@ -974,7 +1038,7 @@
     return `
       ${saludo(s, h)}
       ${App.errorGuardado ? '<div class="aviso mal"><strong>No se pudo guardar.</strong> Revisá tu conexión y volvé a intentar.</div>' : ''}
-      ${avisoImporte(s)}
+      ${avisoImporte(s)}${avisoConsumos(s)}
       <section class="heroe">
         <span class="heroe-et">Tengo</span>
         <span class="heroe-num num" data-contar="${Math.round(r.tengo)}">${f(r.tengo)}</span>
@@ -1380,6 +1444,8 @@
   const A = {
     cerrar: cerrarHoja,
     verImporte: () => hojaImporte(),
+    verConsumos: () => hojaConsumos(),
+    descartarConsumos: () => { cerrarHoja(); mutar(s => { s.config.importados = [...(s.config.importados || []), CONSUMOS.id]; E.tocar(s); }, 'Listo, no los cargo.'); },
     descartarImporte: () => { cerrarHoja(); mutar(s => { s.config.importados = [...(s.config.importados || []), IMPORTE.id]; E.tocar(s); }, 'Listo, no lo cargo.'); },
     ir: d => { if (d.tab === 'repartir') App.rep.real = false; ir(d.tab, d.sub); },
     entro: () => { App.rep.real = true; App.rep.origen = null; ir('repartir'); },
@@ -1749,6 +1815,10 @@
       mutar(s => E.sumarCobro(s, { concepto, monto, vence: val('sc-vence') || hoy(), estado: val('sc-estado') }), 'Sumado a lo que te deben.');
     },
     compro: () => { App.comproHecho = true; App.comproSalto = true; render(); const el = document.querySelector('.veredicto'); if (el) el.scrollIntoView({ block: 'nearest' }); },
+    consumos: () => {
+      cerrarHoja();
+      mutar(s => aplicarConsumos(s), 'Consumos cargados.');
+    },
     importe: () => {
       cerrarHoja();
       mutar(s => aplicarImporte(s), 'Listo, cargado.');
