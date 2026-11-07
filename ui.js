@@ -404,7 +404,7 @@
       <section class="heroe">
         <span class="heroe-et">${p.hoy < 1 && !sinTope ? 'Hoy no te queda para gastar' : 'Hoy podés gastar'}</span>
         <span class="heroe-num num" data-contar="${Math.round(p.hoy)}">${f(p.hoy)}</span>
-        <span class="heroe-pie">${esc(sinTope ? 'Falta saber cuánto cobrás' : porQueCero(s, p, h) || `Tenés ${f(p.caja)} en efectivo para los ${p.dias} ${p.dias === 1 ? 'día' : 'días'} que quedan del mes`)}</span>
+        <span class="heroe-pie">${esc(sinTope ? 'Falta saber cuánto cobrás' : porQueCero(s, p, h) || `${p.gastadoHoyCaja >= 1 ? `Hoy gastaste ${f(p.gastadoHoyCaja)}. ` : ''}Tenés ${f(p.caja)} para los ${p.dias} ${p.dias === 1 ? 'día' : 'días'} que quedan del mes`)}</span>
       </section>
       <nav class="accesos" aria-label="Accesos rápidos">
         <button class="acceso" data-a="ir" data-tab="cargar"><span class="aro">${icono('cargar')}</span>Cargar</button>

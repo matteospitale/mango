@@ -373,9 +373,10 @@
     const { d } = partes(hoy);
     const dias = diasMes(ym) - d + 1;
     const gastadoHoyCaja = suma(g.lista.filter(c => c.fecha === hoy && !E.esTarjeta(s, c.medio)), montoQueCuenta);
-    const porDia = (mes + gastadoHoyCaja) / dias;
-    const deHoy = Math.max(0, porDia - gastadoHoyCaja);
-    return { ym, tope, gastado: g.total, gastadoHoy, caja, reserva, reservaTodas, restanteTope, libreCaja, mes, hoy: deHoy, dias, porDia, limitadoPorCaja: false };
+    /* Lo que tenés ahora, repartido en los días que quedan (hoy incluido). Gastar más un día baja lo de los demás, pero no deja el día en $0. */
+    const porDia = mes / dias;
+    const deHoy = Math.max(0, porDia);
+    return { ym, tope, gastado: g.total, gastadoHoy, gastadoHoyCaja, caja, reserva, reservaTodas, restanteTope, libreCaja, mes, hoy: deHoy, dias, porDia, limitadoPorCaja: false };
   };
 
   E.comoVas = (s, hoy = E.hoyISO()) => {
