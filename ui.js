@@ -375,7 +375,7 @@
     const claseBarra = cv.estado === 'mal' ? 'mal' : cv.estado === 'ojo' ? 'ojo' : '';
     const pillCv = cv.estado === 'bien' ? pill('bien', cv.etiqueta, '✓') : cv.estado === 'ojo' ? pill('ojo', cv.etiqueta, '!') : pill('mal', cv.etiqueta, '×');
     const avisos = [];
-    const sinTope = E.topeEsAuto(s) && p.tope < 1;
+    const sinTope = E.topeEsAuto(s) && E.ingresoPrudente(s, h).monto < 1;
     if (App.errorGuardado) avisos.push(`<div class="aviso mal"><strong>No se pudo guardar.</strong> Revisá tu conexión y volvé a intentar.</div>`);
     avisos.push(avisoImporte(s), avisoConsumos(s));
     return `
@@ -1061,7 +1061,8 @@
       ${campo('a-tope', 'Tope de gasto por mes', E.topeEsAuto(s) ? '' : s.config.tope, { modo: 'decimal', ph: ta.monto >= 1 ? `Automático: ${f(ta.monto)}` : 'Automático', ayuda: textoTopeAuto(ta) })}
       ${campo('a-blue', 'Dólar blue', s.config.tcManual == null ? '' : s.config.tcManual, { modo: 'decimal', ph: s.config.blue ? `Automático: ${f(s.config.blue.venta)}` : 'Automático', ayuda: `Lo traigo solo, a precio de venta: es lo que pagarías para comprar esos dólares. Se usa para tus deudas en dólares (${esc(textoBlue(s))}). Si ponés un número, queda fijo.` })}
       ${campo('a-tc', 'Dólar de tus comisiones', s.config.tc, { modo: 'decimal', ayuda: 'Este lo manejás vos, porque no te pagan al blue. Solo se usa para estimar comisiones.' })}
-      ${campo('a-ingreso', 'Lo que te entra por mes', s.config.ingresoManual == null ? '' : s.config.ingresoManual, { modo: 'decimal', ph: `Automático: ${f(auto.monto)}`, ayuda: `Es el promedio de lo que de verdad cobraste en los últimos 3 meses cerrados (${auto.meses.map(m => `${E.mesCorto(m.ym)} ${fc(m.monto)}`).join(', ')}), sin contar lo que te deben. Con esto calculo cuándo terminás tus deudas y si te entran cuotas. Dejalo vacío para que sea automático.` })}
+      ${campo('a-sueldo', 'Sueldo fijo', s.config.sueldo || '', { modo: 'decimal', ph: '750.000', ayuda: 'Lo que cobrás seguro todos los meses, sin comisiones. Las comisiones no las cuento hasta que entran: así nunca gastás plata que todavía no tenés.' })}
+      ${campo('a-ingreso', 'Lo que te entra por mes', s.config.ingresoManual == null ? '' : s.config.ingresoManual, { modo: 'decimal', ph: `Automático: ${f(auto.monto)}`, ayuda: `Es lo que de verdad cobraste en promedio en los últimos 3 meses (${auto.meses.map(m => `${E.mesCorto(m.ym)} ${fc(m.monto)}`).join(', ')}), con comisiones, pero nunca menos que tu sueldo fijo. Con esto calculo cuándo terminás tus deudas y si te entran cuotas. Dejalo vacío para que sea automático.` })}
       <h2>Tarjetas</h2>
       ${s.tarjetas.map(t => `<div class="fila-campos">${campo(`a-cierre-${t.id}`, `${t.nombre}: cierre`, t.cierre, { modo: 'numeric', ayuda: t.cierreEstimado ? 'Estimado' : '' })}${campo(`a-vence-${t.id}`, 'Vence el día', t.vence, { modo: 'numeric' })}</div>`).join('')}
       <h2>Mensuales</h2>
@@ -1460,6 +1461,12 @@
   };
 
   function render() {
+    if (App.fase === 'app' && App.s && !B() && !(App.s.config.importados || []).includes('sueldo-750')) {
+      const s = App.s, habia = s.config.sueldo;
+      if (!habia) s.config.sueldo = 750000;
+      s.config.importados = [...(s.config.importados || []), 'sueldo-750']; E.tocar(s); guardar();
+      if (!habia) setTimeout(() => toast('Puse tu sueldo fijo en $750.000. Las comisiones las sumo cuando entran.'), 0);
+    }
     if (App.fase === 'app' && App.s && ajustarConsumos(App.s)) { guardar(); setTimeout(() => toast('Listo: saqué Maidana Libros (es de tus papás) y acomodé El Balcón, Vaquería, Catuki y KFC.'), 0); }
     if (App.fase === 'app' && App.s && corregirPapa(App.s)) { guardar(); setTimeout(() => toast(`Listo: lo de Mercado Pago que le debés a tu papá ahora es ${f(IMPORTE.mp.total)}, con los $50.850 de Mercado Libre.`), 0); }
     const v = $('vista'), t = $('tabs');
@@ -1876,7 +1883,9 @@
     ajustes: (form, val) => {
       const s0 = App.s, caja = E.parsearMonto(val('a-caja')), topeTxt = val('a-tope').trim(), tope = topeTxt ? E.parsearMonto(topeTxt) : null, tc = E.parsearMonto(val('a-tc'));
       if (caja == null || (topeTxt && !tope) || !tc) { toast('Revisá tu plata, el tope y el dólar de comisiones.'); return; }
-      const ingTxt = val('a-ingreso').trim(), blueTxt = val('a-blue').trim();
+      const ingTxt = val('a-ingreso').trim(), blueTxt = val('a-blue').trim(), sueldoTxt = val('a-sueldo').trim();
+      const sueldo = sueldoTxt ? E.parsearMonto(sueldoTxt) : null;
+      if (sueldoTxt && !sueldo) { toast('Revisá el sueldo fijo.'); return; }
       const blue = blueTxt ? E.parsearMonto(blueTxt) : null;
       if (blueTxt && !blue) { toast('Revisá el dólar blue.'); return; }
       const valores = {
@@ -1891,6 +1900,7 @@
         if (tc !== s.config.tc) { s.config.tc = tc; s.config.tcFecha = hoy(); }
         s.config.tcManual = blue;
         s.config.ingresoManual = valores.ing;
+        s.config.sueldo = sueldo;
         for (const v of valores.tarjetas) {
           const t = E.tarjeta(s, v.id);
           if (v.cierre >= 1 && v.cierre <= 31 && v.cierre !== t.cierre) { t.cierre = v.cierre; t.cierreEstimado = false; }

@@ -745,7 +745,9 @@
       const delOtro = suma((s.otrosIngresos || []).filter(p => p.origen === 'otroTrabajo' && ymDe(p.fecha) === ym), p => p.monto);
       return { ym, monto: delTrabajo + delOtro };
     });
-    return { monto: suma(meses, x => x.monto) / 3, manual: false, meses };
+    /* Lo prudente: nunca menos que tu sueldo fijo. Las comisiones cuentan cuando de verdad entran. */
+    const promedio = suma(meses, x => x.monto) / 3, fijo = s.config.sueldo || 0;
+    return { monto: Math.max(promedio, fijo), manual: false, meses, promedio, fijo, usaFijo: fijo > promedio };
   };
 
   /* Salida de plata esperada para un mes futuro: tarjetas + gasto corriente, sin contar dos veces. */
@@ -995,9 +997,12 @@
     const recortable = enQue.filter(x => RECORTABLES.includes(x.tipo));
     const montoRecortable = suma(recortable, x => x.monto);
 
-    const tope = E.topeMes(s, hoy), esperado = tope * (pasaron / dias);
+    const tope = E.topeMes(s, hoy), esperado = tope * (pasaron / dias), ing = E.ingresoPrudente(s, hoy).monto;
     let estado, titulo, detalle;
-    if (tope < 1) {
+    if (tope < 1 && ing >= 1) {
+      estado = 'mal'; titulo = 'No gastes nada más con tarjeta';
+      detalle = `Lo que cobrás seguro (${E.fmt(ing)}) ya se va en cuotas y mensuales de tarjeta. Desde el ${fechaCorta(desde)} llevás ${E.fmt(gastado)}. Hasta el cierre del ${fechaCorta(cierre)}, solo lo necesario: súper, transporte y salud. Las comisiones, cuando entren, van a pagar tarjetas y deudas.`;
+    } else if (tope < 1) {
       estado = 'neutro'; titulo = `Llevás ${E.fmt(gastado)} con tarjeta desde el ${fechaCorta(desde)}`;
       detalle = 'Para decirte si tenés rango necesito saber cuánto cobrás por mes. Ponelo en Ajustes.';
     } else if (gastado >= tope) {
