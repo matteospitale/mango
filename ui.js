@@ -1501,6 +1501,22 @@ ${cv.tope >= 1 ? `<div class="barra ${claseBarra}" role="img" aria-label="Usaste
       if (consumoPendiente(s)) { aplicarConsumos(s); hechas.push('lo que gastaste en Visa y Master'); }
       if (hechas.length) { E.tocar(s); guardar(); setTimeout(() => toast(`Listo, cargué ${hechas.join(' y ')}.`), 0); }
     }
+    /* Arreglo de tu plata (7/11): los resúmenes de BBVA de noviembre ya los habías pagado antes de usar Mango, así que no se descuentan de tu plata.
+       Si igual quedó en cero, la dejo en lo que tenías en Mercado Pago el 6/11 ($196.320) menos McDonald's ($23.600). Una sola vez. */
+    if (App.fase === 'app' && App.s && !B() && !(App.s.config.importados || []).includes('arreglo-plata-7-11')) {
+      const s = App.s, antes = E.saldoCaja(s);
+      const pagosViejos = new Set();
+      for (const [k, r] of Object.entries(s.resumenes || {})) {
+        if (!/:2026-1[01]$/.test(k) || !/^(visa|master)/.test(k)) continue;
+        (r.pagos || []).filter(x => x.quien === 'yo' && !x.importado).forEach(x => pagosViejos.add(x.id));
+      }
+      s.caja.movs = s.caja.movs.filter(m => !pagosViejos.has(m.ref));
+      let ajuste = false;
+      if (E.saldoCaja(s) < 1) { E.ajustarCaja(s, 196320.22 - 23600, hoy()); ajuste = true; }
+      s.config.importados = [...(s.config.importados || []), 'arreglo-plata-7-11']; E.tocar(s); guardar();
+      const despues = E.saldoCaja(s);
+      if (Math.abs(despues - antes) >= 1) setTimeout(() => toast(`Arreglé tu plata: pasó de ${f(antes)} a ${f(despues)}.${ajuste ? ' Si no es lo que tenés, corregilo en Ajustes.' : ''}`), 0);
+    }
     /* Saco el sueldo que había puesto yo y el tope de ejemplo de $200.000: no supongo ingresos. Una sola vez. */
     if (App.fase === 'app' && App.s && !B() && !(App.s.config.importados || []).includes('sin-ingresos')) {
       const s = App.s;
