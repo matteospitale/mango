@@ -380,6 +380,17 @@
     return b.fecha === hoy() ? 'actualizado hoy' : `el último que pude traer es del ${E.fechaCorta(b.fecha)}`;
   };
 
+  /* Si da $0, decir por qué: o ya gastaste tu tope del mes, o tu plata está reservada para tarjetas. */
+  const porQueCero = (s, p, h) => {
+    if (p.hoy >= 1) return '';
+    if (p.gastado >= p.tope) return `Este mes ya gastaste ${f(p.gastado)} y tu tope es ${f(p.tope)}.`;
+    if (p.libreCaja < 1) {
+      const quienes = s.tarjetas.map(t => E.resumen(s, t.id, p.ym, h)).filter(r => r.quien === 'yo' && r.restante >= 1).map(r => `${r.nombre} del ${E.fechaCorta(r.vence)}`);
+      return `Tus ${f(p.caja)} ya están reservados${quienes.length ? ` para ${quienes.join(' y ')}` : ' para tarjetas'}.`;
+    }
+    return `Te quedan ${f(p.mes)} para el resto del mes.`;
+  };
+
   function vHoy() {
     const s = App.s, h = hoy(), c = E.estadoCobros(s, h), d = E.totalDeudas(s), p = E.podes(s, h), cv = E.comoVas(s, h);
     const prox = E.proximosVencimientos(s, h).slice(0, 2);
@@ -396,9 +407,9 @@
       ${saludo(s, h)}
       ${avisos.join('')}
       <section class="heroe">
-        <span class="heroe-et">Hoy podés gastar</span>
+        <span class="heroe-et">${p.hoy < 1 && !sinTope ? 'Hoy no te queda para gastar' : 'Hoy podés gastar'}</span>
         <span class="heroe-num num" data-contar="${Math.round(p.hoy)}">${f(p.hoy)}</span>
-        <span class="heroe-pie">${sinTope ? 'Falta saber cuánto cobrás' : `${f(p.mes)} en el mes`}</span>
+        <span class="heroe-pie">${esc(sinTope ? 'Falta saber cuánto cobrás' : porQueCero(s, p, h) || `${f(p.mes)} en el mes`)}</span>
       </section>
       <nav class="accesos" aria-label="Accesos rápidos">
         <button class="acceso" data-a="ir" data-tab="cargar"><span class="aro">${icono('cargar')}</span>Cargar</button>
