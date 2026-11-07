@@ -41,7 +41,23 @@
   const COLORES_TARJETA = { visa: '#4F7BFF', master: '#FFB020', naranja: '#FF7A1A', mp: '#27C3F3' };
   const PALETA_TARJETAS = ['#FF9E1B', '#4CAF50', '#F4D03F', '#6FC3DF', '#FF7A6B', '#B8E986'];
   const colorTarjeta = id => COLORES_TARJETA[id] || PALETA_TARJETAS[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETA_TARJETAS.length];
-  const punto = id => `<span class="punto" style="background:${colorTarjeta(id)}" aria-hidden="true"></span>`;
+  /* Logo chiquito de cada tarjeta. Si no es una que conozco, queda el puntito de color. */
+  const LOGOS = {
+    visa: '<svg class="logo-t" viewBox="0 0 30 19" aria-hidden="true"><rect width="30" height="19" rx="3.5" fill="#fff"/><text x="15" y="13.4" text-anchor="middle" font-family="Arial, sans-serif" font-size="9.6" font-weight="900" font-style="italic" fill="#1A1F71" letter-spacing="-.3">VISA</text></svg>',
+    master: '<svg class="logo-t" viewBox="0 0 30 19" aria-hidden="true"><rect width="30" height="19" rx="3.5" fill="#1b1b1b"/><circle cx="12" cy="9.5" r="5.6" fill="#EB001B"/><circle cx="18" cy="9.5" r="5.6" fill="#F79E1B"/><path d="M15 4.75a5.6 5.6 0 0 1 0 9.5a5.6 5.6 0 0 1 0-9.5z" fill="#FF5F00"/></svg>',
+    mp: '<svg class="logo-t" viewBox="0 0 30 19" aria-hidden="true"><rect width="30" height="19" rx="3.5" fill="#00B1EA"/><ellipse cx="15" cy="9.5" rx="9" ry="6" fill="#fff"/><path d="M8.6 9.6l2.6-1.9 2.1 1.1 1.9-1.3 2.5 1.6 3.6-.4M10.4 11.3l1.3.9M12.5 11.9l1.2.8M14.7 12.1l1 .6" stroke="#0A0080" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    naranja: '<svg class="logo-t" viewBox="0 0 30 19" aria-hidden="true"><rect width="30" height="19" rx="3.5" fill="#FF6200"/><text x="15" y="14" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="900" fill="#fff">N</text></svg>'
+  };
+  const marcaTarjeta = id => {
+    const t = App.s && App.s.tarjetas && App.s.tarjetas.find(x => x.id === id);
+    const n = E.normalizar(((t && t.nombre) || '') + ' ' + id);
+    if (/\bvisa\b/.test(n)) return 'visa';
+    if (/\bmaster|mastercard\b/.test(n)) return 'master';
+    if (/mercado ?pago|\bmp\b/.test(n)) return 'mp';
+    if (/naranja/.test(n)) return 'naranja';
+    return null;
+  };
+  const punto = id => { const m = marcaTarjeta(id); return m ? LOGOS[m] : `<span class="punto" style="background:${colorTarjeta(id)}" aria-hidden="true"></span>`; };
   const TABS = [['hoy', 'Hoy'], ['cargar', 'Cargar'], ['tarjetas', 'Tarjetas'], ['deudas', 'Deudas'], ['compro', '¿Compro?'], ['repartir', 'Repartir']];
 
   const TABS_BASICO = [['hoy', 'Hoy'], ['cargar', 'Gasté'], ['tarjetas', 'Tarjetas'], ['cobre', 'Cobré'], ['compro', '¿Compro?']];
@@ -157,14 +173,17 @@
   const buscarPapa = s => s.deudas.find(d => /\bpap[aá]|\bviejo\b/.test(E.normalizar(d.nombre)));
   const importePendiente = s => !((s.config.importados || []).includes(IMPORTE.id)) && ['visa', 'master', 'mp'].every(k => buscarTarjeta(s, k));
   const primeraPalabra = n => E.normalizar(n).split(/[\s(]+/)[0];
-  const yaEstaCuota = (s, medio, q) => s.compras.some(c => c.medio === medio && c.cuotas === q.de && primeraPalabra(c.nombre) === primeraPalabra(q.nombre) && Math.abs(c.monto / c.cuotas - q.cuota) < 2);
+  /* ¿Ya la tenés? Misma tarjeta y mismas cuotas, y además misma fecha, mismo nombre o casi la misma cuota (por si le cambiaste el nombre o el monto). */
+  const parecida = (s, medio, q) => s.compras.find(c => c.medio === medio && c.cuotas === q.de && (c.fecha === q.fecha || primeraPalabra(c.nombre) === primeraPalabra(q.nombre) || Math.abs(c.monto / c.cuotas - q.cuota) <= q.cuota * 0.05)) || null;
+  const yaEstaCuota = (s, medio, q) => !!parecida(s, medio, q);
+  const cargoLaVieja = s => (s.config.importados || []).includes(IMPORTE.viejo) && Object.values(s.resumenes || {}).some(r => r.real === 2075772.84 || r.real === 710797.26);
   const avisoImporte = s => importePendiente(s)
-    ? `<div class="aviso azul"><strong>${esc(IMPORTE.titulo)}</strong><span>Las cuotas que siguen en Visa, Master y Mercado Pago, tu mitad del plan Peugeot y lo que le debés a tu papá. Revisalo antes de cargarlo.</span><button class="link" data-a="verImporte">Revisar y cargar</button></div>`
+    ? `<div class="aviso azul"><strong>${esc(IMPORTE.titulo)}</strong><span>${cargoLaVieja(s) ? 'La primera versión ya la cargaste. Esta la corrige: marca pagados los resúmenes del 4/11, deja tu mitad del Peugeot y suma Mercado Pago y lo de tu papá. Las cuotas que ya tenés no se repiten.' : 'Las cuotas que siguen en Visa, Master y Mercado Pago, tu mitad del plan Peugeot y lo que le debés a tu papá. Revisalo antes de cargarlo.'}</span><button class="link" data-a="verImporte">Revisar y cargar</button></div>`
     : '';
-  const filasCuotas = (s, t, cuotas, ym) => cuotas.map(q => {
-    const quedan = q.de - q.n, ya = yaEstaCuota(s, t.id, q);
+  const filasCuotas = (s, t, cuotas, ym, grupo) => cuotas.map((q, i) => {
+    const quedan = q.de - q.n, ya = parecida(s, t.id, q);
     const fin = E.sumarMes(ym, quedan), mesFin = fin.slice(0, 4) === hoy().slice(0, 4) ? E.mesNombre(fin) : E.mesAnio(fin);
-    return `<div class="fila"><span class="izq"><span class="nom">${esc(q.nombre)}</span><span class="chico">${quedan === 1 ? `Te queda 1 cuota: termina en ${esc(mesFin)}` : `Te quedan ${quedan} cuotas: termina en ${esc(mesFin)}`}${ya ? ' · ya la tenías, no la repito' : ''}</span></span><span class="der"><span class="num">${f(q.cuota)}</span></span></div>`;
+    return `<label class="fila" style="cursor:pointer"><input type="checkbox" name="imp-q-${grupo}-${i}" ${ya ? '' : 'checked'} style="width:20px;height:20px;flex:none;accent-color:var(--mango)"><span class="izq"><span class="nom">${esc(q.nombre)}</span><span class="chico">${quedan === 1 ? `Te queda 1 cuota: termina en ${esc(mesFin)}` : `Te quedan ${quedan} cuotas: termina en ${esc(mesFin)}`}</span>${ya ? `<span class="chico v-ojo">Parece que ya la tenés como "${esc(ya.nombre)}": no la cargo. Tildala si es otra.</span>` : ''}</span><span class="der"><span class="num">${f(q.cuota)}</span></span></label>`;
   }).join('');
   /* ---------- Consumos de Visa y Master desde el cierre del 22/10 (de tus capturas del 7/11) ----------
      Van al resumen que cierra el 19/11 y vence el 3/12. Las cuotas que ya tenías cargadas no se repiten. */
@@ -262,7 +281,7 @@
       return `<section class="bloque">
           <div class="entre"><h2>${punto(t.id)}${esc(t.nombre)}</h2>${pill('bien', 'Pagada', '✓')}</div>
           <p class="chico">El resumen de noviembre (${f(x.total)}) queda como pagado el 4/11. No te descuento nada de tu plata: ya salió.</p>
-          <div class="lista">${filasCuotas(s, t, x.cuotas, im.bbva.ym)}</div>
+          <div class="lista">${filasCuotas(s, t, x.cuotas, im.bbva.ym, x.buscar)}</div>
         </section>`;
     }).join('');
     const tmp = buscarTarjeta(s, im.mp.buscar);
@@ -276,7 +295,7 @@
         <section class="bloque">
           <div class="entre"><h2>${punto(tmp.id)}${esc(tmp.nombre)}</h2>${pill('azul', 'La pagó tu papá')}</div>
           <p class="chico">El resumen de octubre lo pagó tu papá. Tuyas son Newsan, Kiosco Finca, Zivals, Hadouken y la última cuota de Mercado Libre (${f(im.mp.total)}): eso se suma a lo que le debés. El resto de la tarjeta no es tuyo y no lo cuento.</p>
-          <div class="lista">${filasCuotas(s, tmp, im.mp.cuotas, im.mp.ym)}</div>
+          <div class="lista">${filasCuotas(s, tmp, im.mp.cuotas, im.mp.ym, 'mp')}</div>
         </section>
         <section class="bloque">
           <div class="entre"><h2>Le debés a tu papá</h2><span class="num v-mal">+${f(im.mp.total + im.naranja.monto)}</span></div>
@@ -291,9 +310,9 @@
         <button type="button" class="btn lleno" data-a="descartarImporte">No cargar</button>
       </form>`);
   }
-  const sumarCuotas = (s, t, cuotas, ym) => {
-    for (const q of cuotas) {
-      if (yaEstaCuota(s, t.id, q)) continue;
+  const sumarCuotas = (s, t, cuotas, ym, grupo, elegidas) => {
+    for (const [i, q] of cuotas.entries()) {
+      if (elegidas ? !elegidas.has(`${grupo}-${i}`) : yaEstaCuota(s, t.id, q)) continue;
       const a = E.clasificar(s, { nombre: q.nombre, monto: q.cuota * q.de, cuotas: q.de }, q.fecha);
       s.compras.push({ id: E.uid(), nombre: q.nombre, monto: Math.round(q.cuota * q.de * 100) / 100, cuotas: q.de, medio: t.id, fecha: q.fecha, texto: '', clase: a.clase, motivo: a.motivo, fuente: 'resumen', primerVence: E.sumarMes(ym, -(q.n - 1)), pagadas: q.n });
     }
@@ -320,13 +339,13 @@
     rec.pagos = (rec.pagos || []).filter(p => !p.importado);
     rec.pagos.push({ id: E.uid(), monto: total, fecha, quien: 'yo', nota: 'Pagado antes de cargarlo', importado: true });
   };
-  const aplicarImporte = s => {
+  const aplicarImporte = (s, elegidas = null) => {
     const im = IMPORTE;
     for (const x of im.bbva.tarjetas) {
       const t = buscarTarjeta(s, x.buscar);
       marcarPagadoAntes(s, t.id, im.bbva.ym, x.total, im.bbva.pagado);
       t.cierre = im.bbva.cierre; t.cierreEstimado = false;
-      sumarCuotas(s, t, x.cuotas, im.bbva.ym);
+      sumarCuotas(s, t, x.cuotas, im.bbva.ym, x.buscar, elegidas);
     }
     /* Peugeot: si ya estaba cargado (completo o sin monto), queda solo tu mitad. */
     const visa = buscarTarjeta(s, im.peugeot.buscar);
@@ -342,7 +361,7 @@
     s.resumenes[`${tmp.id}:${im.mp.ym}`] = s.resumenes[`${tmp.id}:${im.mp.ym}`] || {};
     s.resumenes[`${tmp.id}:${im.mp.ym}`].real = im.mp.total;
     E.pagarResumen(s, { cardId: tmp.id, ym: im.mp.ym, monto: im.mp.total, fecha: im.mp.pagado, quien: papa.id, nota: 'Lo pagó tu papá (tus compras)' });
-    sumarCuotas(s, tmp, im.mp.cuotas, im.mp.ym);
+    sumarCuotas(s, tmp, im.mp.cuotas, im.mp.ym, 'mp', elegidas);
     E.sumarDeuda(s, { id: papa.id, monto: im.naranja.monto, fecha: hoy(), nota: `Naranja que pagó (${im.naranja.detalle})` });
     s.config.importados = [...(s.config.importados || []).filter(x => x !== im.viejo), im.viejo, im.id, 'papa-solo-lo-mio', 'papa-con-meli'];
     E.tocar(s);
@@ -1876,9 +1895,10 @@
       cerrarHoja();
       mutar(s => aplicarConsumos(s), 'Consumos cargados.');
     },
-    importe: () => {
+    importe: form => {
+      const elegidas = new Set([...form.querySelectorAll('input[name^="imp-q-"]:checked')].map(i => i.name.slice(6)));
       cerrarHoja();
-      mutar(s => aplicarImporte(s), 'Listo, cargado.');
+      mutar(s => aplicarImporte(s, elegidas), 'Listo, cargado.');
     },
     ajustes: (form, val) => {
       const s0 = App.s, caja = E.parsearMonto(val('a-caja')), topeTxt = val('a-tope').trim(), tope = topeTxt ? E.parsearMonto(topeTxt) : null, tc = E.parsearMonto(val('a-tc'));

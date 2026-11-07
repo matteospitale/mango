@@ -33,11 +33,11 @@
 [hidden] { display: none !important; }
 html { background: var(--fondo); -webkit-text-size-adjust: 100%; }
 body { margin: 0; color: var(--t1); font-family: var(--f); font-size: 15px; line-height: 1.35; overscroll-behavior-y: none; }
-body::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: 100vh; height: 100lvh; min-height: 100%; z-index: -1; background: radial-gradient(90vw 55vh at 96% 2%, rgba(95,190,140,.72), transparent 72%), radial-gradient(95vw 65vh at 4% 100%, rgba(16,58,92,.95), transparent 74%), radial-gradient(70vw 42vh at 92% 96%, rgba(255,158,27,.13), transparent 72%), linear-gradient(170deg, #1E4A48, #0E2A2B 62%); }
+body::before { content: ""; position: fixed; top: -30vh; left: 0; right: 0; height: 160vh; height: calc(100lvh + 60vh); padding: 30vh 0; box-sizing: border-box; z-index: -1; background: radial-gradient(90vw 55vh at 96% 2%, rgba(95,190,140,.72), transparent 72%) content-box no-repeat, radial-gradient(95vw 65vh at 4% 100%, rgba(16,58,92,.95), transparent 74%) content-box no-repeat, radial-gradient(70vw 42vh at 92% 96%, rgba(255,158,27,.13), transparent 72%) content-box no-repeat, linear-gradient(170deg, #1E4A48, #0E2A2B 62%, #0F3044) border-box; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { touch-action: manipulation; }
 :focus-visible { outline: 2px solid var(--mango); outline-offset: 2px; }
-.app { max-width: 540px; margin-inline: auto; padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: max(14px, env(safe-area-inset-right, 0px)); padding-top: calc(12px + env(safe-area-inset-top, 0px)); padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 14px; }
+.app { min-height: 100vh; min-height: 100lvh; align-content: start; max-width: 540px; margin-inline: auto; padding-left: max(14px, env(safe-area-inset-left, 0px)); padding-right: max(14px, env(safe-area-inset-right, 0px)); padding-top: calc(12px + env(safe-area-inset-top, 0px)); padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 14px; }
 .app > * { min-width: 0; }
 
 /* Vidrio */
@@ -79,6 +79,7 @@ p { margin: 0; }
 .aro { width: 56px; height: 56px; border-radius: 99px; display: grid; place-items: center; }
 .aro svg { width: 23px; height: 23px; stroke: currentColor; fill: none; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 .num-fila { font-size: 18px; }
+.logo-t { width: 24px; height: 15px; flex: none; display: inline-block; vertical-align: -3px; margin-right: 7px; border-radius: 3.5px; box-shadow: 0 0 0 1px rgba(255,255,255,.18); }
 .punto { width: 9px; height: 9px; border-radius: 99px; display: inline-block; margin-right: 6px; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,.14); }
 
 /* Bloques */
