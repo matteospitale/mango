@@ -42,12 +42,7 @@
   const PALETA_TARJETAS = ['#FF9E1B', '#4CAF50', '#F4D03F', '#6FC3DF', '#FF7A6B', '#B8E986'];
   const colorTarjeta = id => COLORES_TARJETA[id] || PALETA_TARJETAS[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETA_TARJETAS.length];
   /* Logo chiquito de cada tarjeta. Si no es una que conozco, queda el puntito de color. */
-  const LOGOS = {
-    visa: '<svg class="logo-t" viewBox="0 0 30 19" aria-hidden="true"><rect width="30" height="19" rx="3.5" fill="#fff"/><text x="15" y="13.4" text-anchor="middle" font-family="Arial, sans-serif" font-size="9.6" font-weight="900" font-style="italic" fill="#1A1F71" letter-spacing="-.3">VISA</text></svg>',
-    master: '<svg class="logo-t" viewBox="0 0 30 19" aria-hidden="true"><rect width="30" height="19" rx="3.5" fill="#1b1b1b"/><circle cx="12" cy="9.5" r="5.6" fill="#EB001B"/><circle cx="18" cy="9.5" r="5.6" fill="#F79E1B"/><path d="M15 4.75a5.6 5.6 0 0 1 0 9.5a5.6 5.6 0 0 1 0-9.5z" fill="#FF5F00"/></svg>',
-    mp: '<svg class="logo-t" viewBox="0 0 30 19" aria-hidden="true"><rect width="30" height="19" rx="3.5" fill="#00B1EA"/><ellipse cx="15" cy="9.5" rx="9" ry="6" fill="#fff"/><path d="M8.6 9.6l2.6-1.9 2.1 1.1 1.9-1.3 2.5 1.6 3.6-.4M10.4 11.3l1.3.9M12.5 11.9l1.2.8M14.7 12.1l1 .6" stroke="#0A0080" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    naranja: '<svg class="logo-t" viewBox="0 0 30 19" aria-hidden="true"><rect width="30" height="19" rx="3.5" fill="#FF6200"/><text x="15" y="14" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="900" fill="#fff">N</text></svg>'
-  };
+  const LOGOS = Object.fromEntries(['visa', 'master', 'mp', 'naranja'].map(k => [k, `<span class="logo-t" aria-hidden="true"><img src="logo-${k}.png" alt=""></span>`]));
   const marcaTarjeta = id => {
     const t = App.s && App.s.tarjetas && App.s.tarjetas.find(x => x.id === id);
     const n = E.normalizar(((t && t.nombre) || '') + ' ' + id);
@@ -174,8 +169,8 @@
   const importePendiente = s => !((s.config.importados || []).includes(IMPORTE.id)) && ['visa', 'master', 'mp'].every(k => buscarTarjeta(s, k));
   const primeraPalabra = n => E.normalizar(n).split(/[\s(]+/)[0];
   /* ¿Ya la tenés? Misma tarjeta y mismas cuotas, y además misma fecha, mismo nombre o casi la misma cuota (por si le cambiaste el nombre o el monto). */
-  const parecida = (s, medio, q) => s.compras.find(c => c.medio === medio && c.cuotas === q.de && (c.fecha === q.fecha || primeraPalabra(c.nombre) === primeraPalabra(q.nombre) || Math.abs(c.monto / c.cuotas - q.cuota) <= q.cuota * 0.05)) || null;
-  const yaEstaCuota = (s, medio, q) => !!parecida(s, medio, q);
+  const parecida = (s, medio, q, base = null) => s.compras.find(c => (!base || base.has(c.id)) && c.medio === medio && c.cuotas === q.de && (c.fecha === q.fecha || Math.abs(c.monto / c.cuotas - q.cuota) <= q.cuota * 0.05 || (primeraPalabra(c.nombre) === primeraPalabra(q.nombre) && Math.abs(c.monto / c.cuotas - q.cuota) <= q.cuota * 0.3))) || null;
+  const yaEstaCuota = (s, medio, q, base = null) => !!parecida(s, medio, q, base);
   const cargoLaVieja = s => (s.config.importados || []).includes(IMPORTE.viejo) && Object.values(s.resumenes || {}).some(r => r.real === 2075772.84 || r.real === 710797.26);
   const avisoImporte = s => importePendiente(s)
     ? `<div class="aviso azul"><strong>${esc(IMPORTE.titulo)}</strong><span>${cargoLaVieja(s) ? 'La primera versión ya la cargaste. Esta la corrige: marca pagados los resúmenes del 4/11, deja tu mitad del Peugeot y suma Mercado Pago y lo de tu papá. Las cuotas que ya tenés no se repiten.' : 'Las cuotas que siguen en Visa, Master y Mercado Pago, tu mitad del plan Peugeot y lo que le debés a tu papá. Revisalo antes de cargarlo.'}</span><button class="link" data-a="verImporte">Revisar y cargar</button></div>`
@@ -310,9 +305,9 @@
         <button type="button" class="btn lleno" data-a="descartarImporte">No cargar</button>
       </form>`);
   }
-  const sumarCuotas = (s, t, cuotas, ym, grupo, elegidas) => {
+  const sumarCuotas = (s, t, cuotas, ym, grupo, elegidas, base) => {
     for (const [i, q] of cuotas.entries()) {
-      if (elegidas ? !elegidas.has(`${grupo}-${i}`) : yaEstaCuota(s, t.id, q)) continue;
+      if (elegidas ? !elegidas.has(`${grupo}-${i}`) : yaEstaCuota(s, t.id, q, base)) continue;
       const a = E.clasificar(s, { nombre: q.nombre, monto: q.cuota * q.de, cuotas: q.de }, q.fecha);
       s.compras.push({ id: E.uid(), nombre: q.nombre, monto: Math.round(q.cuota * q.de * 100) / 100, cuotas: q.de, medio: t.id, fecha: q.fecha, texto: '', clase: a.clase, motivo: a.motivo, fuente: 'resumen', primerVence: E.sumarMes(ym, -(q.n - 1)), pagadas: q.n });
     }
@@ -340,12 +335,12 @@
     rec.pagos.push({ id: E.uid(), monto: total, fecha, quien: 'yo', nota: 'Pagado antes de cargarlo', importado: true });
   };
   const aplicarImporte = (s, elegidas = null) => {
-    const im = IMPORTE;
+    const im = IMPORTE, base = new Set(s.compras.map(c => c.id));
     for (const x of im.bbva.tarjetas) {
       const t = buscarTarjeta(s, x.buscar);
       marcarPagadoAntes(s, t.id, im.bbva.ym, x.total, im.bbva.pagado);
       t.cierre = im.bbva.cierre; t.cierreEstimado = false;
-      sumarCuotas(s, t, x.cuotas, im.bbva.ym, x.buscar, elegidas);
+      sumarCuotas(s, t, x.cuotas, im.bbva.ym, x.buscar, elegidas, base);
     }
     /* Peugeot: si ya estaba cargado (completo o sin monto), queda solo tu mitad. */
     const visa = buscarTarjeta(s, im.peugeot.buscar);
@@ -361,7 +356,7 @@
     s.resumenes[`${tmp.id}:${im.mp.ym}`] = s.resumenes[`${tmp.id}:${im.mp.ym}`] || {};
     s.resumenes[`${tmp.id}:${im.mp.ym}`].real = im.mp.total;
     E.pagarResumen(s, { cardId: tmp.id, ym: im.mp.ym, monto: im.mp.total, fecha: im.mp.pagado, quien: papa.id, nota: 'Lo pagó tu papá (tus compras)' });
-    sumarCuotas(s, tmp, im.mp.cuotas, im.mp.ym, 'mp', elegidas);
+    sumarCuotas(s, tmp, im.mp.cuotas, im.mp.ym, 'mp', elegidas, base);
     E.sumarDeuda(s, { id: papa.id, monto: im.naranja.monto, fecha: hoy(), nota: `Naranja que pagó (${im.naranja.detalle})` });
     s.config.importados = [...(s.config.importados || []).filter(x => x !== im.viejo), im.viejo, im.id, 'papa-solo-lo-mio', 'papa-con-meli'];
     E.tocar(s);
@@ -591,7 +586,7 @@
           <input id="cargar-texto" type="text" value="${esc(App.texto)}" placeholder="televisor 1.580.000 6c mercado pago" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done">
         </div>
         <div id="cargar-vista">${previewCarga()}</div>
-        <div class="chips" role="group" aria-label="Con qué pagaste">${OPCIONES_MEDIO(s).map(([id, n]) => `<button type="button" class="chip ${p.medio === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${esc(n)}</button>`).join('')}</div>
+        <div class="chips" role="group" aria-label="Con qué pagaste">${OPCIONES_MEDIO(s).map(([id, n]) => `<button type="button" class="chip ${p.medio === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${E.esTarjeta(s, id) ? punto(id) : ''}${esc(n)}</button>`).join('')}</div>
         <button class="btn prim lleno">Guardar</button>
       </form>
       ${bloqueCuotas(s)}
@@ -1145,7 +1140,7 @@
           <input id="cargar-texto" type="text" value="${esc(App.texto)}" placeholder="rappi 20450" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done">
         </div>
         <div id="cargar-vista">${previewCarga()}</div>
-        ${s.tarjetas.length ? `<div class="chips" role="group" aria-label="Con qué pagaste">${[['efectivo', 'Efectivo'], ...s.tarjetas.map(t => [t.id, t.nombre])].map(([id, n]) => `<button type="button" class="chip ${(p.medio || 'efectivo') === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${esc(n)}</button>`).join('')}</div>` : ''}
+        ${s.tarjetas.length ? `<div class="chips" role="group" aria-label="Con qué pagaste">${[['efectivo', 'Efectivo'], ...s.tarjetas.map(t => [t.id, t.nombre])].map(([id, n]) => `<button type="button" class="chip ${(p.medio || 'efectivo') === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${E.esTarjeta(s, id) ? punto(id) : ''}${esc(n)}</button>`).join('')}</div>` : ''}
         <button class="btn prim lleno">Guardar</button>
       </form>
       ${bloqueCuotas(s)}
@@ -1480,6 +1475,13 @@
   };
 
   function render() {
+    /* Lo que me pasaste en fotos lo cargo yo, una sola vez: sin repetir lo que ya tenías. */
+    if (App.fase === 'app' && App.s && !B()) {
+      const s = App.s, hechas = [];
+      if (importePendiente(s)) { aplicarImporte(s, null); hechas.push('tus resúmenes y lo de tu papá'); }
+      if (consumoPendiente(s)) { aplicarConsumos(s); hechas.push('lo que gastaste en Visa y Master'); }
+      if (hechas.length) { E.tocar(s); guardar(); setTimeout(() => toast(`Listo, cargué ${hechas.join(' y ')}.`), 0); }
+    }
     if (App.fase === 'app' && App.s && !B() && !(App.s.config.importados || []).includes('sueldo-750')) {
       const s = App.s, habia = s.config.sueldo;
       if (!habia) s.config.sueldo = 750000;

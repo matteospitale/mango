@@ -1,6 +1,6 @@
 /* Deja la app disponible sin conexión. Con internet trae siempre la última versión. */
-const VERSION = 'mango-15';
-const ARCHIVOS = ['./', 'index.html', 'engine.js', 'nube.js', 'ui.js', 'manifest.webmanifest', 'icono-180.png', 'icono-192.png', 'icono-512.png'];
+const VERSION = 'mango-16';
+const ARCHIVOS = ['./', 'index.html', 'engine.js', 'nube.js', 'ui.js', 'manifest.webmanifest', 'icono-180.png', 'icono-192.png', 'icono-512.png', 'logo-visa.png', 'logo-master.png', 'logo-mp.png', 'logo-naranja.png'];
 const FIREBASE = 'https://www.gstatic.com/firebasejs/';
 
 self.addEventListener('install', e => {
