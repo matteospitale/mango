@@ -42,7 +42,7 @@
   const PALETA_TARJETAS = ['#FF9E1B', '#4CAF50', '#F4D03F', '#6FC3DF', '#FF7A6B', '#B8E986'];
   const colorTarjeta = id => COLORES_TARJETA[id] || PALETA_TARJETAS[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETA_TARJETAS.length];
   /* Logo chiquito de cada tarjeta. Si no es una que conozco, queda el puntito de color. */
-  const LOGOS = Object.fromEntries(['visa', 'master', 'mp', 'naranja'].map(k => [k, `<span class="logo-t" aria-hidden="true"><img src="logo-${k}.png" alt=""></span>`]));
+  const LOGOS = Object.fromEntries(['visa', 'master', 'mp', 'naranja'].map(k => [k, `<img class="logo-t" src="logo-${k}.png" alt="" aria-hidden="true">`]));
   const marcaTarjeta = id => {
     const t = App.s && App.s.tarjetas && App.s.tarjetas.find(x => x.id === id);
     const n = E.normalizar(((t && t.nombre) || '') + ' ' + id);
@@ -536,10 +536,17 @@
 
   /* Cuotas en curso: de la que está más cerca de terminar a la más lejana. En la compu, una tabla ancha. */
   function bloqueCuotas(s) {
-    const lista = s.compras.map(c => ({ c, e: E.estadoCuotas(s, c, hoy()) })).filter(x => x.e && x.e.quedan > 0)
+    const todas = s.compras.map(c => ({ c, e: E.estadoCuotas(s, c, hoy()) })).filter(x => x.e && x.e.quedan > 0)
       .sort((a, b) => (a.e.termina < b.e.termina ? -1 : a.e.termina > b.e.termina ? 1 : a.e.quedan - b.e.quedan));
-    if (!lista.length) return '';
+    if (!todas.length) return '';
+    /* Filtro por tarjeta: solo las que tienen cuotas. */
+    const conCuotas = s.tarjetas.filter(t => todas.some(x => x.c.medio === t.id));
+    if (App.filtroCuotas && !conCuotas.some(t => t.id === App.filtroCuotas)) App.filtroCuotas = null;
+    const lista = App.filtroCuotas ? todas.filter(x => x.c.medio === App.filtroCuotas) : todas;
     const porMes = lista.reduce((t, x) => t + x.e.porCuota, 0);
+    const falta = lista.reduce((t, x) => t + x.e.porCuota * x.e.quedan, 0);
+    const filtro = conCuotas.length > 1 ? `<div class="chips" role="group" aria-label="Filtrar por tarjeta">${[[null, 'Todas'], ...conCuotas.map(t => [t.id, t.nombre])].map(([id, n]) => `<button type="button" class="chip ${App.filtroCuotas === id ? 'on' : ''}" aria-pressed="${App.filtroCuotas === id}" data-a="filtroCuotas" data-id="${id || ''}">${id ? punto(id) : ''}${esc(n)}</button>`).join('')}</div>` : '';
+    const totales = `<div class="totales-cuotas"><div><span class="chico">Por mes</span><span class="num num-fila">${f(porMes)}</span></div><div><span class="chico">Falta pagar</span><span class="num num-fila">${f(falta)}</span></div><div><span class="chico">Compras</span><span class="num num-fila">${lista.length}</span></div></div>`;
     const quedan = q => (q === 1 ? 'Última' : `Quedan ${q}`);
     const filas = lista.map(({ c, e }) => `<tr data-a="compra" data-id="${c.id}">
         <td><span class="nom">${punto(c.medio)}${esc(c.nombre)}</span></td><td>${esc(categoria(c))}</td><td>${esc(e.tarjeta)}</td>
@@ -548,11 +555,16 @@
         <span class="izq"><span class="nom">${punto(c.medio)}${esc(c.nombre)}</span><span class="chico">${esc(categoria(c))} · ${esc(e.tarjeta)}</span><span class="chico">${quedan(e.quedan)}${e.quedan > 1 ? ' cuotas' : ' cuota'} · termina en ${esc(mesFin(e.termina))}</span></span>
         <span class="der"><span class="num">${f(e.porCuota)}<span class="chico tercero"> /mes</span></span><span class="chico">Total ${f(e.total)}</span></span></button>`).join('');
     return `<section class="bloque ancho">
-        <div class="entre"><h2>Cuotas en curso</h2><span class="chico">${lista.length} compras · ${f(porMes)} por mes</span></div>
+        <h2>Cuotas en curso</h2>
+        ${filtro}
+        ${totales}
         <div class="lista solo-celu">${celu}</div>
         <table class="tabla tabla-cuotas solo-ancha"><thead><tr><th>Compra</th><th>Qué es</th><th>Tarjeta</th><th>Por cuota</th><th>Total</th><th>Cuotas</th><th>Termina</th></tr></thead><tbody>${filas}</tbody></table>
       </section>`;
   }
+
+  /* En la compu, las compras de cada día van en una tabla ancha. */
+  const tablaCompras = items => `<table class="tabla tabla-compras solo-ancha"><thead><tr><th>Compra</th><th>Qué es</th><th>Cómo pagaste</th><th>¿Necesario?</th><th>Monto</th></tr></thead><tbody>${items.map(c => `<tr data-a="compra" data-id="${c.id}"><td><span class="nom">${E.esTarjeta(App.s, c.medio) ? punto(c.medio) : ''}${esc(c.nombre)}</span></td><td>${esc(categoria(c))}</td><td>${esc(textoCuotas(App.s, c))}</td><td>${pillClase(c.clase)}</td><td class="num">${f(c.monto)}</td></tr>`).join('')}</tbody></table>`;
 
   const filaCompra = c => {
     const s = App.s;
@@ -590,7 +602,7 @@
         <button class="btn prim lleno">Guardar</button>
       </form>
       ${bloqueCuotas(s)}
-      ${grupos.length ? grupos.map(g => `<h2 class="grupo">${esc(g.titulo)}</h2><section class="bloque"><div class="lista">${g.items.map(filaCompra).join('')}</div></section>`).join('') : (enCurso.size ? '' : '<p class="sub">Cuando guardes una compra, aparece acá.</p>')}`;
+      ${grupos.length ? grupos.map(g => `<h2 class="grupo">${esc(g.titulo)}</h2><section class="bloque ancho"><div class="lista solo-celu">${g.items.map(filaCompra).join('')}</div>${tablaCompras(g.items)}</section>`).join('') : (enCurso.size ? '' : '<p class="sub">Cuando guardes una compra, aparece acá.</p>')}`;
   }
 
   function hojaCompra(id) {
@@ -1522,6 +1534,7 @@
   const A = {
     cerrar: cerrarHoja,
     verImporte: () => hojaImporte(),
+    filtroCuotas: d => { App.filtroCuotas = d.id || null; render(); },
     verConsumos: () => hojaConsumos(),
     descartarConsumos: () => { cerrarHoja(); mutar(s => { s.config.importados = [...(s.config.importados || []), CONSUMOS.id]; E.tocar(s); }, 'Listo, no los cargo.'); },
     descartarImporte: () => { cerrarHoja(); mutar(s => { s.config.importados = [...(s.config.importados || []), IMPORTE.id]; E.tocar(s); }, 'Listo, no lo cargo.'); },
