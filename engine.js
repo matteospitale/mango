@@ -963,6 +963,58 @@
     return r;
   };
 
+  /* ---------- Cómo vas con las tarjetas desde el último cierre ----------
+     Mira lo que compraste con tarjeta desde que cerró cada una, en qué se fue, y te dice si tenés rango o si frenás. */
+  const RECORTABLES = ['delivery', 'auto', 'comida', 'hormiga', 'salidas', 'bebida', 'online', 'juegos', 'ropa', 'coleccion', 'comics', 'musica', 'apuestas', 'tabaco'];
+  E.analisisTarjetas = (s, hoy = E.hoyISO()) => {
+    const { d } = partes(hoy), ym = ymDe(hoy);
+    const tarjetas = s.tarjetas.map(t => {
+      const cierreProx = d <= t.cierre ? fechaEn(ym, t.cierre) : fechaEn(sumarMes(ym, 1), t.cierre);
+      const cierreAnt = d <= t.cierre ? fechaEn(sumarMes(ym, -1), t.cierre) : fechaEn(ym, t.cierre);
+      const compras = s.compras.filter(c => c.medio === t.id && c.fecha > cierreAnt && c.fecha <= hoy);
+      const gastado = suma(compras, montoQueCuenta);
+      const pago = E.resumen(s, t.id, E.primerVencimiento(t, hoy), hoy);
+      return { id: t.id, nombre: t.nombre, cierreAnt, cierreProx, compras, gastado, pago };
+    }).filter(x => x.compras.length || x.pago.restante >= 1);
+    const conCompras = tarjetas.filter(x => x.compras.length);
+    if (!conCompras.length) return null;
+    const compras = conCompras.flatMap(x => x.compras);
+    const gastado = suma(compras, montoQueCuenta);
+    const principal = [...conCompras].sort((a, b) => b.gastado - a.gastado)[0];
+    const cierre = principal.cierreProx, desde = principal.cierreAnt;
+    const dias = Math.max(1, difDias(desde, cierre)), pasaron = Math.max(1, difDias(desde, hoy)), quedan = Math.max(0, difDias(hoy, cierre));
+
+    /* En qué se fue, de mayor a menor. */
+    const porTipo = {};
+    for (const c of compras) {
+      const k = c.categoria || E.categoria(c.nombre) || 'otro';
+      porTipo[k] = porTipo[k] || { tipo: k, monto: 0, veces: 0 };
+      porTipo[k].monto += montoQueCuenta(c); porTipo[k].veces++;
+    }
+    const enQue = Object.values(porTipo).sort((a, b) => b.monto - a.monto);
+    const recortable = enQue.filter(x => RECORTABLES.includes(x.tipo));
+    const montoRecortable = suma(recortable, x => x.monto);
+
+    const tope = E.topeMes(s, hoy), esperado = tope * (pasaron / dias);
+    let estado, titulo, detalle;
+    if (tope < 1) {
+      estado = 'neutro'; titulo = `Llevás ${E.fmt(gastado)} con tarjeta desde el ${fechaCorta(desde)}`;
+      detalle = 'Para decirte si tenés rango necesito saber cuánto cobrás por mes. Ponelo en Ajustes.';
+    } else if (gastado >= tope) {
+      estado = 'mal'; titulo = 'No gastes nada más con tarjeta';
+      detalle = `Desde el ${fechaCorta(desde)} llevás ${E.fmt(gastado)} y tu tope es ${E.fmt(tope)}. Hasta el cierre del ${fechaCorta(cierre)}, solo lo necesario: súper, transporte y salud.`;
+    } else if (gastado > esperado * 1.15) {
+      const resto = tope - gastado;
+      estado = 'ojo'; titulo = 'Frená con la tarjeta';
+      detalle = `Llevás ${E.fmt(gastado)} y a esta altura ibas a ir por ${E.fmt(esperado)}. Te quedan ${E.fmt(resto)} hasta el cierre del ${fechaCorta(cierre)}: unos ${E.fmt(resto / Math.max(1, quedan))} por día, y mejor solo en lo necesario.`;
+    } else {
+      const resto = tope - gastado;
+      estado = 'bien'; titulo = 'Vas bien, tenés rango';
+      detalle = `Llevás ${E.fmt(gastado)} de ${E.fmt(tope)}. Te quedan ${E.fmt(resto)} hasta el cierre del ${fechaCorta(cierre)}: unos ${E.fmt(resto / Math.max(1, quedan))} por día.`;
+    }
+    return { estado, titulo, detalle, recortable: estado === 'bien' ? [] : recortable.slice(0, 3), gastado, tope, desde, cierre, dias, pasaron, quedan, enQue, montoRecortable, tarjetas };
+  };
+
   /* ---------- Mi consejo: por qué sí o por qué no, y qué hacer en vez de comprar ya ---------- */
   const TIPS = {
     juegos: 'Los juegos bajan seguido: fijate si está usado, en oferta en la tienda digital o en un pack. En unas semanas suele estar bastante más barato.',

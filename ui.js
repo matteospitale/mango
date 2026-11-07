@@ -408,6 +408,7 @@
         <p>${esc(cv.frase)}${cv.pctNoNecesario != null ? ` El ${cv.pctNoNecesario}% de tus compras no era necesario.` : ''}</p>
         ${E.topeEsAuto(s) ? `<p class="ayuda">Tu tope de ${f(p.tope)} es automático: sale de lo que te entra por mes menos tarjetas. Lo cambiás en Ajustes.</p>` : ''}
       </section>`}
+      ${bloqueAnalisisTarjetas(s)}
       <section class="bloque">
         <div class="entre"><h2>Próximo pago</h2><button class="link chico" data-a="ir" data-tab="tarjetas">Ver tarjetas</button></div>
         ${prox.length ? `<div class="lista">${prox.map(r => filaPago(r)).join('')}</div>` : '<p class="sub">No hay pagos cargados.</p>'}
@@ -498,6 +499,26 @@
   };
   const categoria = c => CATEGORIAS[c.categoria || E.categoria(c.nombre)] || 'Otra cosa';
   const mesFin = ym => (ym.slice(0, 4) === hoy().slice(0, 4) ? E.mesNombre(ym) : `${E.mesCorto(ym)} ${ym.slice(0, 4)}`);
+
+  /* Cómo vas con las tarjetas desde el último cierre: el veredicto, en qué se fue y cuánto pagás. */
+  const PLURAL = { delivery: 'pedidos', auto: 'viajes', comida: 'veces', salidas: 'salidas', hormiga: 'veces' };
+  function bloqueAnalisisTarjetas(s) {
+    const a = E.analisisTarjetas(s, hoy());
+    if (!a) return '';
+    const k = a.estado === 'mal' ? 'mal' : a.estado === 'ojo' ? 'ojo' : a.estado === 'bien' ? 'bien' : 'neutro';
+    const p = k === 'bien' ? pill('bien', 'Vas bien', '✓') : k === 'ojo' ? pill('ojo', 'Vas rápido', '!') : k === 'mal' ? pill('mal', 'Frená', '×') : pill('neutro', `${a.pasaron} de ${a.dias} días`);
+    const max = Math.max(1, ...a.enQue.map(x => x.monto));
+    const enQue = a.enQue.slice(0, 6).map(x => `<div class="mes-f basico" style="cursor:default;grid-template-columns:118px minmax(0, 1fr) 128px"><span class="m" style="text-transform:none">${esc(CATEGORIAS[x.tipo] || 'Otra cosa')}</span><span class="mes-b"><span style="width:${(x.monto / max * 100).toFixed(1)}%"></span></span><span class="v num">${fc(x.monto)}<span class="chico tercero"> · ${x.veces} ${x.veces === 1 ? 'vez' : (PLURAL[x.tipo] || 'veces')}</span></span></div>`).join('');
+    const pagos = a.tarjetas.filter(x => x.pago.restante >= 1).map(x => `<div class="fila"><span class="izq"><span class="nom">${punto(x.id)}${esc(x.nombre)}</span><span class="chico">Vence ${esc(E.textoVence(x.pago))}${x.pago.sinResumenReal ? ' · lo que llevás hasta hoy' : ''}</span></span><span class="der"><span class="num">${f(x.pago.restante)}</span></span></div>`).join('');
+    return `<section class="bloque">
+        <div class="entre"><h2>Tus tarjetas desde el cierre</h2>${p}</div>
+        <div class="veredicto ${k === 'neutro' ? '' : k}" style="padding:12px 14px"><h3 style="font-size:19px">${esc(a.titulo)}</h3><p>${esc(a.detalle)}</p>${a.recortable.length ? `<p class="costo">Lo que más podés cortar: ${esc(a.recortable.map(x => (CATEGORIAS[x.tipo] || x.tipo).toLowerCase()).join(', '))}. Suman ${f(a.recortable.reduce((u, x) => u + x.monto, 0))} en ${a.pasaron} días.</p>` : ''}</div>
+        ${a.tope >= 1 ? `<div class="barra ${k === 'mal' ? 'mal' : k === 'ojo' ? 'ojo' : ''}" role="img" aria-label="Usaste ${Math.round(a.gastado / a.tope * 100)}% del tope"><span style="width:${Math.min(100, a.gastado / a.tope * 100).toFixed(1)}%"></span><i style="left:${(a.pasaron / a.dias * 100).toFixed(1)}%"></i></div>` : ''}
+        <h2 style="margin-top:4px">En qué se fue</h2>
+        <div class="meses">${enQue}</div>
+        ${pagos ? `<h2 style="margin-top:4px">Lo que vas a pagar</h2><div class="lista">${pagos}</div>` : ''}
+      </section>`;
+  }
 
   /* Cuotas en curso: de la que está más cerca de terminar a la más lejana. En la compu, una tabla ancha. */
   function bloqueCuotas(s) {
@@ -598,6 +619,7 @@
     const hayMinimos = s.tarjetas.some(t => E.proximoDeTarjeta(s, t.id, h).sinResumenReal);
     return `
       <header class="cab"><div><h1>Tarjetas</h1></div></header>
+      ${bloqueAnalisisTarjetas(s)}
       <section class="bloque">
         <h2>Lo que ya tenés comprometido</h2>
         <div class="meses">
@@ -682,7 +704,8 @@
   /* ---------- Deudas y cobros ---------- */
   function vDeudas() {
     const seg = `<div class="seg" role="tablist"><button role="tab" aria-selected="${App.sub === 'deudas'}" class="${App.sub === 'deudas' ? 'on' : ''}" data-a="sub" data-sub="deudas">Deudas</button><button role="tab" aria-selected="${App.sub === 'cobros'}" class="${App.sub === 'cobros' ? 'on' : ''}" data-a="sub" data-sub="cobros">Cobros</button></div>`;
-    return `<header class="cab"><div><h1>${App.sub === 'deudas' ? 'Lo que debés' : 'Lo que te deben'}</h1></div></header>${seg}${App.sub === 'deudas' ? vListaDeudas() : vCobros()}`;
+    return `<header class="cab"><div><h1>${App.sub === 'deudas' ? 'Lo que debés' : 'Lo que te deben'}</h1></div></header>
+      ${seg}${App.sub === 'deudas' ? vListaDeudas() : vCobros()}`;
   }
 
   function vListaDeudas() {
