@@ -387,9 +387,10 @@
     const usado = p.tope > 0 ? p.gastado / p.tope : 0;
     const ritmo = d / dm;
     let estado, etiqueta, frase;
-    if (p.tope < 1 && E.ingresoPrudente(s, hoy).monto >= 1) {
-      estado = 'mal'; etiqueta = 'Sin margen';
-      frase = `Lo que cobrás fijo ya se va en cuotas y mensuales, así que no queda margen para compras nuevas. Este mes llevás ${E.fmt(p.gastado)}.`;
+    if (p.tope < 1) {
+      const antes = suma(s.compras.filter(c => ymDe(c.fecha) === sumarMes(ym, -1) && partes(c.fecha).d <= d), montoQueCuenta);
+      estado = antes >= 1 && p.gastado > antes * 1.1 ? 'ojo' : 'bien'; etiqueta = estado === 'ojo' ? 'Más que el mes pasado' : 'Este mes';
+      frase = `Llevás ${E.fmt(p.gastado)} gastados este mes${antes >= 1 ? `. A esta altura de ${mesNombre(sumarMes(ym, -1))} llevabas ${E.fmt(antes)}` : ''}.`;
     } else if (p.gastado > p.tope) {
       estado = 'mal'; etiqueta = 'Te pasaste';
       frase = `Gastaste ${E.fmt(p.gastado)}: ${E.fmt(p.gastado - p.tope)} más que tu tope de ${E.fmt(p.tope)}.`;
@@ -644,7 +645,7 @@
     }
     const tope = E.topeMes(s);
     const deudas = E.totalDeudas(s).ars;
-    if (clase !== 'necesario' && deudas > 0 && monto >= tope * 0.5) {
+    if (clase !== 'necesario' && deudas > 0 && tope >= 1 && monto >= tope * 0.5) {
       subir();
       if (fuente === 'duda') fuente = 'duda-cara';
       notas.push(`Pesa mucho mientras debés ${E.fmtCorto(deudas)}.`);
@@ -742,19 +743,9 @@
   };
 
   /* ---------- Lo que entra de verdad ---------- */
-  E.ingresoPrudente = (s, hoy = E.hoyISO()) => {
-    if (s.config.ingresoManual != null) return { monto: s.config.ingresoManual, manual: true, meses: [] };
-    const m = ymDe(hoy);
-    const meses = [1, 2, 3].map(i => {
-      const ym = sumarMes(m, -i);
-      const delTrabajo = suma(s.cobros.pagos.filter(p => ymDe(p.fecha) === ym), p => p.monto);
-      const delOtro = suma((s.otrosIngresos || []).filter(p => p.origen === 'otroTrabajo' && ymDe(p.fecha) === ym), p => p.monto);
-      return { ym, monto: delTrabajo + delOtro };
-    });
-    /* Lo prudente: nunca menos que tu sueldo fijo. Las comisiones cuentan cuando de verdad entran. */
-    const promedio = suma(meses, x => x.monto) / 3, fijo = s.config.sueldo || 0;
-    return { monto: Math.max(promedio, fijo), manual: false, meses, promedio, fijo, usaFijo: fijo > promedio };
-  };
+  /* No supongo ningún ingreso: ni cuánto ni cuándo. Lo que entra cuenta solo cuando lo anotás, y va a la plata que tenés. */
+  E.ingresoPrudente = () => ({ monto: 0, manual: false, meses: [], desconocido: true });
+  E.conIngreso = s => E.ingresoPrudente(s).monto >= 1;
 
   /* Salida de plata esperada para un mes futuro: tarjetas + gasto corriente, sin contar dos veces. */
   const salidaMes = (s, ym, hoy) => {
@@ -792,6 +783,7 @@
   };
 
   E.mesSinDeudas = proy => {
+    if (!(proy.ingreso >= 1)) return null;
     if (proy.deudaInicial < 1 && proy.filas[0].deudaFin < 1) return null;
     const f = proy.filas.find(r => r.deudaFin < 1);
     return f ? f.ym : 'nunca';
@@ -859,7 +851,36 @@
 
   const textoOpcion = o => (o.n === 1 ? 'en 1 pago' : `en ${o.n} cuotas de ${E.fmt(o.cuota)}`);
 
-  E.evaluarCompra = (s, { monto, plan = null }, hoy = E.hoyISO()) => {
+  /* Sin ingresos seguros: en efectivo se mide con lo que tenés para el mes; con tarjeta, con lo que ya debés pagar. */
+  const evaluarSinIngreso = (s, { monto, plan, medio }, hoy) => {
+    const p = E.podes(s, hoy), n = plan && plan.n > 1 ? plan.n : 1, total = plan && plan.total ? plan.total : monto;
+    const conTarjeta = n > 1 || (medio && E.esTarjeta(s, medio));
+    const r = { monto, planes: [], avisos: [], sinDeudas: null, ingreso: 0, sinIngreso: true };
+    if (conTarjeta) {
+      const aPagar = suma(E.proximosVencimientos(s, hoy), x => x.restante);
+      if (aPagar >= 1) {
+        r.veredicto = 'no'; r.titulo = 'Con tarjeta, hoy no';
+        r.detalle = `Ya tenés ${E.fmt(aPagar)} para pagar de tarjetas y no hay un cobro seguro. Sumar ${n > 1 ? `${n} cuotas de ${E.fmt(plan.cuota)}` : E.fmt(total)} es más deuda sin saber con qué pagarla.${total <= p.mes ? ` En efectivo te alcanzaría, pero te dejaría ${E.fmt(p.mes - total)} para ${p.dias} días.` : ''}`;
+      } else {
+        r.veredicto = 'justo'; r.titulo = 'Podés, pero sin saber cuándo cobrás';
+        r.detalle = `No tenés nada pendiente de tarjetas. Igual, ${n > 1 ? `son ${n} cuotas de ${E.fmt(plan.cuota)}` : `son ${E.fmt(total)}`} que vas a tener que pagar aunque no cobres a tiempo.`;
+      }
+    } else if (total <= p.hoy) {
+      r.veredicto = 'si'; r.titulo = 'Sí, en efectivo te alcanza';
+      r.detalle = `Entra en lo de hoy (${E.fmt(p.hoy)}). Te quedan ${E.fmt(p.mes - total)} para los ${p.dias} días que quedan del mes.`;
+    } else if (total <= p.mes) {
+      const resto = p.mes - total, dias = Math.max(1, p.dias - 1);
+      r.veredicto = 'justo'; r.titulo = 'Te alcanza, pero quedás justo';
+      r.detalle = `Te dejaría ${E.fmt(resto)} para ${dias} ${dias === 1 ? 'día' : 'días'}: ${E.fmt(resto / dias)} por día hasta fin de mes.`;
+    } else {
+      r.veredicto = 'no'; r.titulo = 'No te alcanza';
+      r.detalle = `Tenés ${E.fmt(p.mes)} en efectivo para lo que queda del mes. Te faltan ${E.fmt(total - p.mes)}.`;
+    }
+    return r;
+  };
+
+  E.evaluarCompra = (s, { monto, plan = null, medio = null }, hoy = E.hoyISO()) => {
+    if (!E.conIngreso(s)) return evaluarSinIngreso(s, { monto, plan, medio }, hoy);
     const m0 = ymDe(hoy), p = E.podes(s, hoy), base = E.proyectar(s, { hoy });
     const a = analizarPlanes(base.filas, monto);
     const sinDeudas = E.mesSinDeudas(base);
@@ -1006,12 +1027,17 @@
 
     const tope = E.topeMes(s, hoy), esperado = tope * (pasaron / dias), ing = E.ingresoPrudente(s, hoy).monto;
     let estado, titulo, detalle;
-    if (tope < 1 && ing >= 1) {
+    const aPagar = suma(tarjetas, x => x.pago.restante);
+    if (tope < 1 && aPagar >= 1) {
+      const prox = [...tarjetas].filter(x => x.pago.restante >= 1).sort((a, b) => (a.pago.vence < b.pago.vence ? -1 : 1))[0];
+      estado = 'mal'; titulo = 'No gastes nada más con tarjeta';
+      detalle = `Ya tenés ${E.fmt(aPagar)} para pagar de tarjetas (lo primero, ${prox.nombre} el ${fechaCorta(prox.pago.vence)}) y no hay un cobro seguro. Desde el ${fechaCorta(desde)} llevás ${E.fmt(gastado)}. Hasta que entre plata, solo lo necesario y en efectivo.`;
+    } else if (tope < 1 && ing >= 1) {
       estado = 'mal'; titulo = 'No gastes nada más con tarjeta';
       detalle = `Lo que cobrás seguro (${E.fmt(ing)}) ya se va en cuotas y mensuales de tarjeta. Desde el ${fechaCorta(desde)} llevás ${E.fmt(gastado)}. Hasta el cierre del ${fechaCorta(cierre)}, solo lo necesario: súper, transporte y salud. Las comisiones, cuando entren, van a pagar tarjetas y deudas.`;
     } else if (tope < 1) {
       estado = 'neutro'; titulo = `Llevás ${E.fmt(gastado)} con tarjeta desde el ${fechaCorta(desde)}`;
-      detalle = 'Para decirte si tenés rango necesito saber cuánto cobrás por mes. Ponelo en Ajustes.';
+      detalle = 'No tenés nada pendiente de tarjetas. Igual, sin un cobro seguro, mejor solo lo necesario.';
     } else if (gastado >= tope) {
       estado = 'mal'; titulo = 'No gastes nada más con tarjeta';
       detalle = `Desde el ${fechaCorta(desde)} llevás ${E.fmt(gastado)} y tu tope es ${E.fmt(tope)}. Hasta el cierre del ${fechaCorta(cierre)}, solo lo necesario: súper, transporte y salud.`;
@@ -1059,7 +1085,10 @@
 
     /* Tus deudas: cuánto te corre la fecha en que terminás. */
     const deudas = E.totalDeudas(s).ars;
-    if (deudas >= 1) {
+    if (deudas >= 1 && !E.conIngreso(s)) {
+      puntos.push({ titulo: 'Tus deudas', texto: `Debés ${E.fmtCorto(deudas)}. Cada compra nueva es plata que no va a eso, y no hay un cobro seguro.`, tono: 'mal' });
+      porque = porque || `debés ${E.fmtCorto(deudas)} y no hay un cobro seguro`;
+    } else if (deudas >= 1) {
       const fin = E.mesSinDeudas(E.proyectar(s, { hoy }));
       const con = E.mesSinDeudas(E.proyectar(s, { hoy, plan: { n, cuota, desde: 1 } }));
       let texto = `Debés ${E.fmtCorto(deudas)}.`, tono = 'neutro';

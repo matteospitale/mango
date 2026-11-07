@@ -395,7 +395,7 @@
     const claseBarra = cv.estado === 'mal' ? 'mal' : cv.estado === 'ojo' ? 'ojo' : '';
     const pillCv = cv.estado === 'bien' ? pill('bien', cv.etiqueta, '✓') : cv.estado === 'ojo' ? pill('ojo', cv.etiqueta, '!') : pill('mal', cv.etiqueta, '×');
     const avisos = [];
-    const sinTope = E.topeEsAuto(s) && E.ingresoPrudente(s, h).monto < 1;
+    const sinTope = false;
     if (App.errorGuardado) avisos.push(`<div class="aviso mal"><strong>No se pudo guardar.</strong> Revisá tu conexión y volvé a intentar.</div>`);
     avisos.push(avisoImporte(s), avisoConsumos(s));
     return `
@@ -424,9 +424,9 @@
         <div class="btns"><button class="btn mini" data-a="ajustes">Poner lo que cobro</button><button class="btn mini" data-a="cobre">Anotar un cobro</button></div>
       </section>` : `<section class="bloque">
         <div class="entre"><h2>Cómo vas</h2>${pillCv}</div>
-        <div class="barra ${claseBarra}" role="img" aria-label="Usaste ${Math.round(cv.usado * 100)}% del tope, llevás ${Math.round(cv.ritmo * 100)}% del mes"><span style="width:${Math.min(100, cv.usado * 100).toFixed(1)}%"></span><i style="left:${(cv.ritmo * 100).toFixed(1)}%"></i></div>
+${cv.tope >= 1 ? `<div class="barra ${claseBarra}" role="img" aria-label="Usaste ${Math.round(cv.usado * 100)}% del tope, llevás ${Math.round(cv.ritmo * 100)}% del mes"><span style="width:${Math.min(100, cv.usado * 100).toFixed(1)}%"></span><i style="left:${(cv.ritmo * 100).toFixed(1)}%"></i></div>` : ''}
         <p>${esc(cv.frase)}${cv.pctNoNecesario != null ? ` El ${cv.pctNoNecesario}% de tus compras no era necesario.` : ''}</p>
-        ${E.topeEsAuto(s) ? `<p class="ayuda">Tu tope de ${f(p.tope)} es automático: sale de lo que te entra por mes menos tarjetas. Lo cambiás en Ajustes.</p>` : ''}
+
       </section>`}
       ${bloqueAnalisisTarjetas(s)}
       <section class="bloque">
@@ -637,13 +637,14 @@
     const libre = meses.slice(1, 4).map(m => m.libre);
     const libreMin = libre.length ? Math.min(...libre) : 0;
     let frase;
-    if (libreMin >= 1) frase = `Tenés margen: hasta ${f(libreMin)} por mes en cuotas sin frenar tus deudas.`;
+    if (ing < 1) frase = 'No sé cuánto ni cuándo cobrás, así que no te digo si te entran cuotas. Esto es lo que ya tenés que pagar en los próximos meses.';
+    else if (libreMin >= 1) frase = `Tenés margen: hasta ${f(libreMin)} por mes en cuotas sin frenar tus deudas.`;
     else if (fin && fin !== 'nunca') frase = `Hoy no conviene sumar cuotas: hasta ${E.mesAnio(fin)} lo que te sobra va a deudas. Cada cuota nueva atrasa esa fecha.`;
     else if (fin === 'nunca') frase = 'Hoy no te dan los números para sumar cuotas: lo que entra no alcanza a cubrir tarjetas y deudas.';
     else frase = 'Todavía no tenés margen para sumar cuotas.';
     const filas = meses.map(m => {
       const ab = App.abiertos.has('mes-' + m.ym);
-      const margen = m.margen == null ? '<span class="tercero">–</span>' : `<span class="${m.margen < 0 ? 'v-mal' : ''}">${fc(m.margen)}</span>`;
+      const margen = ing < 1 ? '' : m.margen == null ? '<span class="tercero">–</span>' : `<span class="${m.margen < 0 ? 'v-mal' : ''}">${fc(m.margen)}</span>`;
       const faltan = s.tarjetas.filter(t => { const r = E.proximoDeTarjeta(s, t.id, h); return r.ym === m.ym && E.faltaMonto(r); }).map(t => t.id);
       const valor = faltan.length ? (m.total >= 1 ? `${fc(m.total)} <span class="v-ojo">+?</span>` : '<span class="v-ojo">Falta</span>') : fc(m.total);
       return `<button class="mes-f" data-a="toggle" data-id="mes-${m.ym}" aria-expanded="${ab}"><span class="m">${esc(E.mesCorto(m.ym))}</span><span class="mes-b"><span style="width:${(m.total / max * 100).toFixed(1)}%"></span></span><span class="v num">${valor}</span><span class="v num">${margen}</span></button>
@@ -656,11 +657,11 @@
       <section class="bloque">
         <h2>Lo que ya tenés comprometido</h2>
         <div class="meses">
-          <div class="mes-f cab-m"><span>Mes</span><span></span><span class="v">Tarjetas</span><span class="v">Te queda</span></div>
+          <div class="mes-f cab-m"><span>Mes</span><span></span><span class="v">Tarjetas</span><span class="v">${ing < 1 ? '' : 'Te queda'}</span></div>
           ${filas}
         </div>
         <p>${esc(frase)}</p>
-        <p class="ayuda">"Te queda" es lo que te entra por mes (${fc(ing)}) menos tarjetas y tu tope para vivir.</p>
+        ${ing < 1 ? '' : `<p class="ayuda">"Te queda" es lo que te entra por mes (${fc(ing)}) menos tarjetas y tu tope para vivir.</p>`}
       </section>
       ${hayMinimos ? '<div class="aviso">No cargué consumos viejos. Estos montos solo incluyen lo que cargues desde ahora y tus mensuales. Tocá "Datos del resumen" para poner el monto real de cada tarjeta.</div>' : ''}
       ${s.tarjetas.map(t => bloqueTarjeta(t, h)).join('')}`;
@@ -744,7 +745,7 @@
   function vListaDeudas() {
     const s = App.s, h = hoy(), t = E.totalDeudas(s), proy = E.proyectar(s, { hoy: h }), fin = E.mesSinDeudas(proy), ing = E.ingresoPrudente(s, h).monto;
     const lista = E.deudasOrdenadas(s).filter(d => d.movs.length);
-    const frase = fin === 'nunca' ? 'Con lo que te entra por mes, hoy no llegás a cerrarlas.' : fin ? `Con lo que te entra por mes (${fc(ing)}), terminás de pagar en ${E.mesAnio(fin)}.` : 'No tenés deudas cargadas.';
+    const frase = ing < 1 ? (t.ars >= 1 ? 'No calculo cuándo terminás: depende de cuándo y cuánto cobres. Cuando entre plata, Repartir te dice cuánto va a cada una.' : 'No tenés deudas cargadas.') : fin === 'nunca' ? 'Con lo que te entra por mes, hoy no llegás a cerrarlas.' : fin ? `Con lo que te entra por mes (${fc(ing)}), terminás de pagar en ${E.mesAnio(fin)}.` : 'No tenés deudas cargadas.';
     return `<section class="bloque">
         <h2>Total</h2>
         <p><span class="num grande v-mal">${f(t.ars)}</span></p>
@@ -956,7 +957,7 @@
   }
 
   function resultadoCompro(p, plan, h) {
-    const s = App.s, v = E.evaluarCompra(s, { monto: plan.precio != null ? plan.precio : plan.total, plan }, h);
+    const s = App.s, v = E.evaluarCompra(s, { monto: plan.precio != null ? plan.precio : plan.total, plan, medio: p.medio }, h);
     const k = v.veredicto === 'si' ? 'bien' : (v.veredicto === 'justo' || v.veredicto === 'cuotas') ? 'ojo' : 'mal';
     const nombre = p.nombre || 'Esto';
     const a = E.clasificar(s, { nombre, monto: plan.total, cuotas: plan.n }, h, { hora: horaAhora() });
@@ -970,12 +971,12 @@
       </section>
       ${bloqueConTarjeta(s, p, plan, h)}
       ${bloqueConsejo(s, p, plan, h, a)}
-      <section class="bloque">
+      ${v.sinIngreso ? '' : `<section class="bloque">
         <h2>Cómo te entra</h2>
         <table class="tabla"><thead><tr><th>Forma</th><th>Por mes</th><th>Cuándo</th></tr></thead><tbody>${filas}</tbody></table>
         ${v.siTePagan ? `<p>${esc(v.siTePagan)}</p>` : ''}
         ${v.avisos.map(x => `<p class="ayuda">${esc(x)}</p>`).join('')}
-      </section>
+      </section>`}
       <div class="btns">
         ${k !== 'bien' ? '<button class="btn" data-a="esperar">Esperar 48 horas</button>' : ''}
         <button class="btn" data-a="comproCargar">${k === 'bien' ? 'La compré' : 'La compré igual'}</button>
@@ -1079,7 +1080,7 @@
 
   /* Cómo sale el tope automático, con tus números. */
   const textoTopeAuto = ta => {
-    if (ta.ingreso < 1) return 'Si no sabés cuál poner, dejalo vacío y lo calculo yo. Para eso necesito saber cuánto te entra por mes: cargalo abajo o anotá lo que cobrás en Entró plata.';
+    if (ta.ingreso < 1) return 'Opcional: un máximo que querés gastar en el mes, con tarjeta o en efectivo. Si lo dejás vacío, no te marco ningún tope.';
     const deudas = ta.hayDeudas ? `el ${Math.round(ta.pct * 100)}% es para vivir y el resto va a deudas` : `el ${Math.round(ta.pct * 100)}% es para vivir y el resto queda de colchón`;
     return `Dejalo vacío y lo calculo yo: te entran ${f(ta.ingreso)} por mes, ${f(ta.tarjetas)} ya están atados a cuotas y mensuales de tarjeta${ta.fijos >= 1 ? `, ${f(ta.fijos)} a otros mensuales` : ''}. De lo que queda, ${deudas}. Todo lo que comprás cuenta acá, aunque sea con tarjeta.`;
   };
@@ -1091,11 +1092,9 @@
     const ta = E.topeAuto(s, h);
     abrirHoja('Ajustes', `<form data-form="ajustes">
       ${campo('a-caja', '¿Cuánta plata tenés ahora?', redondo(E.saldoCaja(s)), { modo: 'decimal', ayuda: 'Sumá efectivo, banco y billeteras.' })}
-      ${campo('a-tope', 'Tope de gasto por mes', E.topeEsAuto(s) ? '' : s.config.tope, { modo: 'decimal', ph: ta.monto >= 1 ? `Automático: ${f(ta.monto)}` : 'Automático', ayuda: textoTopeAuto(ta) })}
+      ${campo('a-tope', 'Tope de gasto por mes', E.topeEsAuto(s) ? '' : s.config.tope, { modo: 'decimal', ph: ta.monto >= 1 ? `Automático: ${f(ta.monto)}` : 'Sin tope', ayuda: textoTopeAuto(ta) })}
       ${campo('a-blue', 'Dólar blue', s.config.tcManual == null ? '' : s.config.tcManual, { modo: 'decimal', ph: s.config.blue ? `Automático: ${f(s.config.blue.venta)}` : 'Automático', ayuda: `Lo traigo solo, a precio de venta: es lo que pagarías para comprar esos dólares. Se usa para tus deudas en dólares (${esc(textoBlue(s))}). Si ponés un número, queda fijo.` })}
       ${campo('a-tc', 'Dólar de tus comisiones', s.config.tc, { modo: 'decimal', ayuda: 'Este lo manejás vos, porque no te pagan al blue. Solo se usa para estimar comisiones.' })}
-      ${campo('a-sueldo', 'Sueldo fijo', s.config.sueldo || '', { modo: 'decimal', ph: '750.000', ayuda: 'Lo que cobrás seguro todos los meses, sin comisiones. Las comisiones no las cuento hasta que entran: así nunca gastás plata que todavía no tenés.' })}
-      ${campo('a-ingreso', 'Lo que te entra por mes', s.config.ingresoManual == null ? '' : s.config.ingresoManual, { modo: 'decimal', ph: `Automático: ${f(auto.monto)}`, ayuda: `Es lo que de verdad cobraste en promedio en los últimos 3 meses (${auto.meses.map(m => `${E.mesCorto(m.ym)} ${fc(m.monto)}`).join(', ')}), con comisiones, pero nunca menos que tu sueldo fijo. Con esto calculo cuándo terminás tus deudas y si te entran cuotas. Dejalo vacío para que sea automático.` })}
       <h2>Tarjetas</h2>
       ${s.tarjetas.map(t => `<div class="fila-campos">${campo(`a-cierre-${t.id}`, `${t.nombre}: cierre`, t.cierre, { modo: 'numeric', ayuda: t.cierreEstimado ? 'Estimado' : '' })}${campo(`a-vence-${t.id}`, 'Vence el día', t.vence, { modo: 'numeric' })}</div>`).join('')}
       <h2>Mensuales</h2>
@@ -1501,11 +1500,12 @@
       if (consumoPendiente(s)) { aplicarConsumos(s); hechas.push('lo que gastaste en Visa y Master'); }
       if (hechas.length) { E.tocar(s); guardar(); setTimeout(() => toast(`Listo, cargué ${hechas.join(' y ')}.`), 0); }
     }
-    if (App.fase === 'app' && App.s && !B() && !(App.s.config.importados || []).includes('sueldo-750')) {
-      const s = App.s, habia = s.config.sueldo;
-      if (!habia) s.config.sueldo = 750000;
-      s.config.importados = [...(s.config.importados || []), 'sueldo-750']; E.tocar(s); guardar();
-      if (!habia) setTimeout(() => toast('Puse tu sueldo fijo en $750.000. Las comisiones las sumo cuando entran.'), 0);
+    /* Saco el sueldo que había puesto yo y el tope de ejemplo de $200.000: no supongo ingresos. Una sola vez. */
+    if (App.fase === 'app' && App.s && !B() && !(App.s.config.importados || []).includes('sin-ingresos')) {
+      const s = App.s;
+      s.config.sueldo = null; s.config.ingresoManual = null;
+      if (s.config.tope === 200000) s.config.tope = null;
+      s.config.importados = [...(s.config.importados || []), 'sin-ingresos']; E.tocar(s); guardar();
     }
     if (App.fase === 'app' && App.s && ajustarConsumos(App.s)) { guardar(); setTimeout(() => toast('Listo: saqué Maidana Libros (es de tus papás) y acomodé El Balcón, Vaquería, Catuki y KFC.'), 0); }
     if (App.fase === 'app' && App.s && corregirPapa(App.s)) { guardar(); setTimeout(() => toast(`Listo: lo de Mercado Pago que le debés a tu papá ahora es ${f(IMPORTE.mp.total)}, con los $50.850 de Mercado Libre.`), 0); }
@@ -1925,13 +1925,10 @@
     ajustes: (form, val) => {
       const s0 = App.s, caja = E.parsearMonto(val('a-caja')), topeTxt = val('a-tope').trim(), tope = topeTxt ? E.parsearMonto(topeTxt) : null, tc = E.parsearMonto(val('a-tc'));
       if (caja == null || (topeTxt && !tope) || !tc) { toast('Revisá tu plata, el tope y el dólar de comisiones.'); return; }
-      const ingTxt = val('a-ingreso').trim(), blueTxt = val('a-blue').trim(), sueldoTxt = val('a-sueldo').trim();
-      const sueldo = sueldoTxt ? E.parsearMonto(sueldoTxt) : null;
-      if (sueldoTxt && !sueldo) { toast('Revisá el sueldo fijo.'); return; }
+      const blueTxt = val('a-blue').trim();
       const blue = blueTxt ? E.parsearMonto(blueTxt) : null;
       if (blueTxt && !blue) { toast('Revisá el dólar blue.'); return; }
       const valores = {
-        ing: ingTxt ? E.parsearMonto(ingTxt) : null,
         tarjetas: s0.tarjetas.map(t => ({ id: t.id, cierre: Number(val(`a-cierre-${t.id}`)), vence: Number(val(`a-vence-${t.id}`)) })),
         fijos: (s0.fijos || []).map(x => ({ id: x.id, texto: val(`a-fijo-${x.id}`).trim(), activo: form.elements[`a-activo-${x.id}`].checked }))
       };
@@ -1941,8 +1938,8 @@
         s.config.tope = tope || null;
         if (tc !== s.config.tc) { s.config.tc = tc; s.config.tcFecha = hoy(); }
         s.config.tcManual = blue;
-        s.config.ingresoManual = valores.ing;
-        s.config.sueldo = sueldo;
+        s.config.ingresoManual = null;
+        s.config.sueldo = null;
         for (const v of valores.tarjetas) {
           const t = E.tarjeta(s, v.id);
           if (v.cierre >= 1 && v.cierre <= 31 && v.cierre !== t.cierre) { t.cierre = v.cierre; t.cierreEstimado = false; }
