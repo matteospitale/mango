@@ -564,7 +564,7 @@
   /* Qué es lo que comprás, por las palabras que usás. El orden importa: gana la primera que coincide. */
   const R = (palabras, clase, tipo, motivo) => ({ re: new RegExp(`\\b(${palabras})\\b`), clase, tipo, motivo });
   const REGLAS = [
-    R('rappi|pedidos ?ya|uber ?eats|delivery|glovo|pedido', 'innecesario', 'delivery', 'Es delivery: lo mismo hecho en casa sale bastante menos.'),
+    R('rappi|pedidos ?ya|uber ?eats|delivery|glovo|pedido|catuki|tuki', 'innecesario', 'delivery', 'Es delivery: lo mismo hecho en casa sale bastante menos.'),
     R('temu|shein|aliexpress|wish', 'innecesario', 'online', 'Compra online de impulso. Nada de esto suele ser urgente.'),
     R('casino|apuestas?|bet|bplay|codere|betano|bet365|quini|loteria|raspadita', 'innecesario', 'apuestas', 'Son apuestas: plata que casi siempre no vuelve.'),
     R('puchos?|cigarrillos?|atado|vape|tabaco', 'innecesario', 'tabaco', 'Es un gasto que se repite todos los días y suma mucho.'),
@@ -584,10 +584,10 @@
     R('peluqueria|barberia', 'necesario', 'cuidado', 'Cuidado personal básico.'),
     R('uber|didi|cabify|taxi|remis', 'gustito', 'auto', 'Auto por app: si había colectivo, se podía evitar.'),
     R('birra|cerveza|fernet|vino|vinos|bodega|vinoteca|whisky|gin|tragos?|drinks?|amaretto', 'gustito', 'bebida', 'Es bebida o una salida: un gusto.'),
-    R('mc|mcdonalds?|burger|burgerking|mostaza|kfc|wendys|subway|pizzeria|pizza|sushi|empanadas?|hamburguesas?|gordis|lomitos?|milanesas?|restaurant|resto|parrilla|bar|helados?|grido|pastas|cena|almuerzo|merienda|desayuno|brunch|papanato', 'gustito', 'comida', 'Comer afuera es un gusto. Vale si no se repite mucho.'),
+    R('kfc|mc|mcdonalds?|burger|burgerking|mostaza|kfc|wendys|subway|pizzeria|pizza|sushi|empanadas?|hamburguesas?|gordis|lomitos?|milanesas?|restaurant|resto|parrilla|bar|helados?|grido|pastas|cena|almuerzo|merienda|desayuno|brunch|papanato', 'gustito', 'comida', 'Comer afuera es un gusto. Vale si no se repite mucho.'),
     R('cines?|trigital|cinemark|hoyts|showcase|recital|concierto|show|festival|entradas?|movistar arena|alpogo|passline|teatro|boliche|fiesta|cancha|partido|abono', 'gustito', 'salidas', 'Salida o evento. Es un gusto, no una necesidad.'),
     R('gimnasio|gym|pileta|club|padel|futbol|crossfit|yoga|pilates|suplementos?|proteina|creatina', 'gustito', 'deporte', 'Es deporte: vale la pena si lo usás de verdad.'),
-    R('ropa|remera|buzo|zapatillas?|jean|pantalon|campera|camisa|vestido|medias|newsport|dexter|grid|decathlon|nike|adidas|puma|vans|converse|zara|levis|lacoste|topper|jordan|rossetti|black ?torino|torino', 'gustito', 'ropa', 'Ropa. Salvo que te haga falta de verdad, es un gusto.'),
+    R('ropa|remera|buzo|zapatillas?|jean|pantalon|campera|camisa|vestido|medias|newsport|dexter|grid|decathlon|nike|adidas|puma|vans|converse|zara|levis|lacoste|topper|jordan|rossetti|black ?torino|torino|vaqueria', 'gustito', 'ropa', 'Ropa. Salvo que te haga falta de verdad, es un gusto.'),
     R('perfume|perfumeria|julerias?|maquillaje|crema|skincare', 'gustito', 'belleza', 'Es un gusto personal.'),
     R('libros?|yenny|cuspide|libreria|emporio|buscalibre', 'gustito', 'lectura', 'Es un libro: un gusto, de los buenos.'),
     R('regalos?|cumple|cumpleanos|aniversario', 'gustito', 'regalo', 'Es un regalo: está bien, pero ponele un límite.'),
@@ -1275,7 +1275,7 @@
     salidas: { nombre: 'salida', plural: 'salidas', fem: true }
   };
   const ORDINALES = { 3: ['Tercer', 'Tercera'], 4: ['Cuarto', 'Cuarta'], 5: ['Quinto', 'Quinta'], 6: ['Sexto', 'Sexta'], 7: ['Séptimo', 'Séptima'] };
-  const tipoDeCompra = c => { const r = REGLAS.find(x => x.re.test(normalizar(c.nombre || ''))); return r ? r.tipo : null; };
+  const tipoDeCompra = c => { if (c.categoria) return c.categoria; const r = REGLAS.find(x => x.re.test(normalizar(c.nombre || ''))); return r ? r.tipo : null; };
 
   /* Lo urgente: si hay algo de esto, se muestra hasta que se resuelva. */
   const fraseUrgente = (s, hoy, hora) => {

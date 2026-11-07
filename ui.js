@@ -172,14 +172,14 @@
     id: 'consumos-bbva-nov26',
     titulo: 'Lo que gastaste en Visa y Master',
     tarjetas: [
-      { buscar: 'visa', banco: 715144.78, previas: 83373.33, items: [
+      { buscar: 'visa', banco: 715144.78, previas: 83373.33, ajenos: 68310, items: [
         ['2026-11-06', 'Uber', 9002], ['2026-11-06', 'Black Torino', 39500, 3], ['2026-11-05', 'Hoyts', 19000], ['2026-11-05', 'Catuki app', 7350],
-        ['2026-11-05', 'Uber', 5904], ['2026-11-05', 'Cabify', 11993.71], ['2026-11-04', 'Uber', 3668], ['2026-11-04', 'Paseo del Jockey (KF164)', 31493],
+        ['2026-11-05', 'Uber', 5904], ['2026-11-05', 'Cabify', 11993.71], ['2026-11-04', 'Uber', 3668], ['2026-11-04', 'KFC Paseo del Jockey', 31493],
         ['2026-11-03', 'Uber', 7218], ['2026-11-02', 'Uber', 6847], ['2026-11-02', 'PedidosYa Risata Nueva', 8070], ['2026-11-02', 'Uber', 7623],
         ['2026-11-02', 'PedidosYa Risata Nueva', 5197.5], ['2026-11-01', 'Burger King Colón', 22500], ['2026-10-31', 'Pablo Andrés Costa', 30492.15],
         ['2026-10-27', 'Alpogo Tickets', 33034.44, 3], ['2026-10-27', 'Alpogo Tickets', 32200], ['2026-10-25', 'Farmacia SV', 15689], ['2026-10-24', 'Rappi', 37563],
-        ['2026-10-24', 'Uber Eats', 16611], ['2026-10-24', 'El Balcón', 42650], ['2026-10-23', 'El Balcón', 14112, 2], ['2026-10-23', 'Buscalibre', 19309.15, 3],
-        ['2026-10-23', 'Sanatorio Allende', 58399.51, 3], ['2026-10-23', 'Café de Barrio', 6580], ['2026-10-23', 'Maidana Libros', 68310], ['2026-10-22', 'PedidosYa Leroma Valle', 11450],
+        ['2026-10-24', 'Uber Eats', 16611], ['2026-10-24', 'El Balcón (perfume, regalo)', 42650], ['2026-10-23', 'El Balcón (perfume, regalo)', 14112, 2], ['2026-10-23', 'Buscalibre', 19309.15, 3],
+        ['2026-10-23', 'Sanatorio Allende', 58399.51, 3], ['2026-10-23', 'Café de Barrio', 6580], ['2026-10-22', 'PedidosYa Leroma Valle', 11450],
         ['2026-09-19', 'Vaqueria', 45266.66, 3, 2]
       ] },
       { buscar: 'master', banco: 77609.60, previas: 49729.60, items: [
@@ -188,6 +188,31 @@
     ]
   };
   const ymConsumos = '2026-12';
+  /* Lo que me aclaraste: qué es cada una. Maidana Libros ($68.310, 23/10) es de tus papás: no se cuenta. */
+  const CATEGORIA_CONSUMO = { 'el balcon': 'regalo', vaqueria: 'ropa', 'catuki app': 'delivery', 'kfc paseo del jockey': 'comida' };
+  const catConsumo = nombre => CATEGORIA_CONSUMO[E.normalizar(nombre).replace(/\s*\(.*\)$/, '')] || null;
+  /* Si ya los habías cargado: arregla nombres y categorías y saca lo de tus papás. Una sola vez. */
+  const ajustarConsumos = s => {
+    const id = 'consumos-ajuste-1';
+    if (!s || (s.config.importados || []).includes(id) || !(s.config.importados || []).includes(CONSUMOS.id)) return false;
+    const visa = buscarTarjeta(s, 'visa');
+    let cambio = false;
+    if (visa) {
+      const antes = s.compras.length;
+      s.compras = s.compras.filter(c => !(c.medio === visa.id && c.fecha === '2026-10-23' && Math.abs(c.monto - 68310) < 1 && /maidana/.test(E.normalizar(c.nombre))));
+      cambio = s.compras.length !== antes;
+      for (const c of s.compras) {
+        if (c.medio !== visa.id) continue;
+        const n = E.normalizar(c.nombre);
+        if (n.startsWith('paseo del jockey')) { c.nombre = 'KFC Paseo del Jockey'; c.categoria = 'comida'; cambio = true; }
+        else if (n === 'el balcon') { c.nombre = 'El Balcón (perfume, regalo)'; c.categoria = 'regalo'; cambio = true; }
+        else if (n === 'vaqueria' || n === 'catuki app') { c.categoria = catConsumo(c.nombre); cambio = true; }
+      }
+    }
+    s.config.importados = [...(s.config.importados || []), id];
+    E.tocar(s);
+    return cambio;
+  };
   const consumoPendiente = s => !((s.config.importados || []).includes(CONSUMOS.id)) && CONSUMOS.tarjetas.every(x => buscarTarjeta(s, x.buscar));
   const yaEstaConsumo = (s, medio, [fecha, nombre, cuota, n = 1]) => s.compras.some(c => c.medio === medio && c.fecha === fecha && c.cuotas === n && Math.abs(c.monto / c.cuotas - cuota) < 2);
   const avisoConsumos = s => consumoPendiente(s)
@@ -205,13 +230,13 @@
       const suma = x.items.reduce((a, it) => a + it[2], 0);
       return `<section class="bloque">
           <div class="entre"><h2>${punto(t.id)}${esc(t.nombre)}</h2><span class="num">${f(suma)}</span></div>
-          <p class="chico">El banco dice ${f(x.banco)}: estos ${f(suma)} más ${f(x.previas)} de cuotas que ya tenías.${Math.abs(x.banco - suma - x.previas) >= 1 ? ` Faltan ${f(x.banco - suma - x.previas)} que quedaron escondidos en "Mostrar más".` : ' Coincide justo.'}</p>
+          <p class="chico">El banco dice ${f(x.banco)}: estos ${f(suma)} más ${f(x.previas)} de cuotas que ya tenías${x.ajenos ? ` y ${f(x.ajenos)} de tus papás` : ''}.${Math.abs(x.banco - suma - x.previas - (x.ajenos || 0)) >= 1 ? ` Faltan ${f(x.banco - suma - x.previas - (x.ajenos || 0))} que quedaron escondidos en "Mostrar más".` : ' Coincide justo.'}</p>
           <div class="lista">${filas}</div>
         </section>`;
     }).join('');
     abrirHoja(CONSUMOS.titulo, `<form data-form="consumos">
         ${bloques}
-        <p class="ayuda">Trigital, Plataforma 10 y Jetsmart también aparecen en tus capturas, pero ya los tenías cargados: no los repito.</p>
+        <p class="ayuda">Trigital, Plataforma 10 y Jetsmart también aparecen en tus capturas, pero ya los tenías cargados: no los repito. Maidana Libros ($68.310) es de tus papás: no lo cuento.</p>
         <button class="btn prim lleno">Cargar</button>
         <button type="button" class="btn lleno" data-a="descartarConsumos">No cargar</button>
       </form>`, 'Van al resumen que cierra el 19/11 y vence el 3/12.');
@@ -224,10 +249,10 @@
         const [fecha, nombre, cuota, n = 1, va = 1] = it;
         const monto = Math.round(cuota * n * 100) / 100;
         const a = E.clasificar(s, { nombre, monto, cuotas: n }, fecha);
-        s.compras.push({ id: E.uid(), nombre, monto, cuotas: n, medio: t.id, fecha, texto: '', clase: a.clase, motivo: a.motivo, fuente: a.fuente, primerVence: E.sumarMes(ymConsumos, -(va - 1)), pagadas: va - 1 });
+        s.compras.push({ id: E.uid(), nombre, monto, cuotas: n, medio: t.id, fecha, texto: '', clase: a.clase, motivo: a.motivo, fuente: a.fuente, categoria: catConsumo(nombre), primerVence: E.sumarMes(ymConsumos, -(va - 1)), pagadas: va - 1 });
       }
     }
-    s.config.importados = [...(s.config.importados || []), CONSUMOS.id];
+    s.config.importados = [...(s.config.importados || []), CONSUMOS.id, 'consumos-ajuste-1'];
     E.tocar(s);
   };
   function hojaImporte() {
@@ -471,7 +496,7 @@
     estudio: 'Estudio', transporte: 'Transporte', servicio: 'Servicio', cuidado: 'Cuidado personal', belleza: 'Belleza', super: 'Súper',
     online: 'Compra online', hormiga: 'Gasto hormiga', tabaco: 'Tabaco'
   };
-  const categoria = c => CATEGORIAS[E.categoria(c.nombre)] || 'Otra cosa';
+  const categoria = c => CATEGORIAS[c.categoria || E.categoria(c.nombre)] || 'Otra cosa';
   const mesFin = ym => (ym.slice(0, 4) === hoy().slice(0, 4) ? E.mesNombre(ym) : `${E.mesCorto(ym)} ${ym.slice(0, 4)}`);
 
   /* Cuotas en curso: de la que está más cerca de terminar a la más lejana. En la compu, una tabla ancha. */
@@ -542,6 +567,7 @@
       <div class="campo"><label for="c-medio">Con qué pagaste</label><select id="c-medio" name="c-medio">${OPCIONES_MEDIO(s).map(([v, t]) => `<option value="${v}" ${v === c.medio ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
       ${B() ? campo('c-pagadas', 'Cuotas que ya pagaste', c.pagadas || 0, { modo: 'numeric', ayuda: 'Para compras que ya venías pagando: si vas por la 3 de 6, poné 2.' }) : ''}
       ${campo('c-fecha', 'Fecha', c.fecha, { tipo: 'date' })}
+      <div class="campo"><label for="c-categoria">Qué es</label><select id="c-categoria" name="c-categoria"><option value="">${esc(CATEGORIAS[E.categoria(c.nombre)] ? `Automático: ${CATEGORIAS[E.categoria(c.nombre)]}` : 'Otra cosa')}</option>${Object.entries(CATEGORIAS).sort((a, b) => a[1].localeCompare(b[1])).map(([k, v]) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></div>
       <div class="campo"><span class="et-campo">¿Era necesario?</span>${chips('c-clase', Object.entries(CLASES).map(([k, v]) => [k, v.t]), c.clase)}<span class="ayuda">${esc(c.motivo || '')}</span></div>
       <button class="btn prim lleno">Guardar cambios</button>
       <button type="button" class="btn peligro lleno" data-a="borrarCompra" data-id="${c.id}">Borrar compra</button>
@@ -1411,6 +1437,7 @@
   };
 
   function render() {
+    if (App.fase === 'app' && App.s && ajustarConsumos(App.s)) { guardar(); setTimeout(() => toast('Listo: saqué Maidana Libros (es de tus papás) y acomodé El Balcón, Vaquería, Catuki y KFC.'), 0); }
     if (App.fase === 'app' && App.s && corregirPapa(App.s)) { guardar(); setTimeout(() => toast(`Listo: lo de Mercado Pago que le debés a tu papá ahora es ${f(IMPORTE.mp.total)}, con los $50.850 de Mercado Libre.`), 0); }
     const v = $('vista'), t = $('tabs');
     const fuera = { cargando: vCargando, login: vLogin, sinAcceso: vSinAcceso, error: vErrorNube, sinDatos: vInicio }[App.fase];
@@ -1722,7 +1749,7 @@
       const cambio = clase !== c.clase;
       cerrarHoja();
       mutar(s => {
-        const cambios = { nombre, monto, cuotas, medio, fecha: val('c-fecha') || c.fecha, clase };
+        const cambios = { nombre, monto, cuotas, medio, fecha: val('c-fecha') || c.fecha, clase, categoria: val('c-categoria') || null };
         if (medio !== c.medio || (val('c-fecha') && val('c-fecha') !== c.fecha)) cambios.primerVence = undefined;
         if (B()) {
           const pagadas = Math.max(0, Number(val('c-pagadas')) || 0), tj = E.tarjeta(s, medio);
