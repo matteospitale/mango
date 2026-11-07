@@ -383,7 +383,7 @@
   /* Si da $0, decir por qué: o ya gastaste tu tope del mes, o tu plata está reservada para tarjetas. */
   const porQueCero = (s, p, h) => {
     if (p.hoy >= 1) return '';
-    return `No te queda efectivo hasta que cobres el ${E.fechaCorta(p.cobro)}.`;
+    return 'No te queda efectivo para lo que resta del mes.';
   };
 
   function vHoy() {
@@ -404,7 +404,7 @@
       <section class="heroe">
         <span class="heroe-et">${p.hoy < 1 && !sinTope ? 'Hoy no te queda para gastar' : 'Hoy podés gastar'}</span>
         <span class="heroe-num num" data-contar="${Math.round(p.hoy)}">${f(p.hoy)}</span>
-        <span class="heroe-pie">${esc(sinTope ? 'Falta saber cuánto cobrás' : porQueCero(s, p, h) || `Tenés ${f(p.caja)} en efectivo hasta que cobres el ${E.fechaCorta(p.cobro)} (${p.dias} ${p.dias === 1 ? 'día' : 'días'})`)}</span>
+        <span class="heroe-pie">${esc(sinTope ? 'Falta saber cuánto cobrás' : porQueCero(s, p, h) || `Tenés ${f(p.caja)} en efectivo para los ${p.dias} ${p.dias === 1 ? 'día' : 'días'} que quedan del mes`)}</span>
       </section>
       <nav class="accesos" aria-label="Accesos rápidos">
         <button class="acceso" data-a="ir" data-tab="cargar"><span class="aro">${icono('cargar')}</span>Cargar</button>
@@ -1094,7 +1094,6 @@
       ${campo('a-tope', 'Tope de gasto por mes', E.topeEsAuto(s) ? '' : s.config.tope, { modo: 'decimal', ph: ta.monto >= 1 ? `Automático: ${f(ta.monto)}` : 'Automático', ayuda: textoTopeAuto(ta) })}
       ${campo('a-blue', 'Dólar blue', s.config.tcManual == null ? '' : s.config.tcManual, { modo: 'decimal', ph: s.config.blue ? `Automático: ${f(s.config.blue.venta)}` : 'Automático', ayuda: `Lo traigo solo, a precio de venta: es lo que pagarías para comprar esos dólares. Se usa para tus deudas en dólares (${esc(textoBlue(s))}). Si ponés un número, queda fijo.` })}
       ${campo('a-tc', 'Dólar de tus comisiones', s.config.tc, { modo: 'decimal', ayuda: 'Este lo manejás vos, porque no te pagan al blue. Solo se usa para estimar comisiones.' })}
-      ${campo('a-cobro', 'Día que cobrás', s.config.sueldoDia || 10, { modo: 'numeric', ayuda: 'Tu efectivo tiene que durarte hasta ese día. Lo de hoy sale de dividirlo por los días que faltan.' })}
       ${campo('a-sueldo', 'Sueldo fijo', s.config.sueldo || '', { modo: 'decimal', ph: '750.000', ayuda: 'Lo que cobrás seguro todos los meses, sin comisiones. Las comisiones no las cuento hasta que entran: así nunca gastás plata que todavía no tenés.' })}
       ${campo('a-ingreso', 'Lo que te entra por mes', s.config.ingresoManual == null ? '' : s.config.ingresoManual, { modo: 'decimal', ph: `Automático: ${f(auto.monto)}`, ayuda: `Es lo que de verdad cobraste en promedio en los últimos 3 meses (${auto.meses.map(m => `${E.mesCorto(m.ym)} ${fc(m.monto)}`).join(', ')}), con comisiones, pero nunca menos que tu sueldo fijo. Con esto calculo cuándo terminás tus deudas y si te entran cuotas. Dejalo vacío para que sea automático.` })}
       <h2>Tarjetas</h2>
@@ -1927,7 +1926,7 @@
       const s0 = App.s, caja = E.parsearMonto(val('a-caja')), topeTxt = val('a-tope').trim(), tope = topeTxt ? E.parsearMonto(topeTxt) : null, tc = E.parsearMonto(val('a-tc'));
       if (caja == null || (topeTxt && !tope) || !tc) { toast('Revisá tu plata, el tope y el dólar de comisiones.'); return; }
       const ingTxt = val('a-ingreso').trim(), blueTxt = val('a-blue').trim(), sueldoTxt = val('a-sueldo').trim();
-      const sueldo = sueldoTxt ? E.parsearMonto(sueldoTxt) : null, cobroDia = Number(val('a-cobro'));
+      const sueldo = sueldoTxt ? E.parsearMonto(sueldoTxt) : null;
       if (sueldoTxt && !sueldo) { toast('Revisá el sueldo fijo.'); return; }
       const blue = blueTxt ? E.parsearMonto(blueTxt) : null;
       if (blueTxt && !blue) { toast('Revisá el dólar blue.'); return; }
@@ -1944,7 +1943,6 @@
         s.config.tcManual = blue;
         s.config.ingresoManual = valores.ing;
         s.config.sueldo = sueldo;
-        if (cobroDia >= 1 && cobroDia <= 31) s.config.sueldoDia = cobroDia;
         for (const v of valores.tarjetas) {
           const t = E.tarjeta(s, v.id);
           if (v.cierre >= 1 && v.cierre <= 31 && v.cierre !== t.cierre) { t.cierre = v.cierre; t.cierreEstimado = false; }
