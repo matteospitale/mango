@@ -38,11 +38,11 @@
     abajo: '<path d="M6 9l6 6 6-6"/>'
   };
   const icono = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONOS[n]}</svg>`;
-  const COLORES_TARJETA = { visa: '#4F7BFF', master: '#FFB020', naranja: '#FF7A1A', mp: '#27C3F3' };
+  const COLORES_TARJETA = { visa: '#3D6BFF', master: '#EB001B', naranja: '#FF6200', mp: '#FFE600' };
   const PALETA_TARJETAS = ['#FF9E1B', '#4CAF50', '#F4D03F', '#6FC3DF', '#FF7A6B', '#B8E986'];
   const colorTarjeta = id => COLORES_TARJETA[id] || PALETA_TARJETAS[[...String(id)].reduce((a, c) => a + c.charCodeAt(0), 0) % PALETA_TARJETAS.length];
-  /* Logo chiquito de cada tarjeta. Si no es una que conozco, queda el puntito de color. */
-  const LOGOS = Object.fromEntries(['visa', 'master', 'mp', 'naranja'].map(k => [k, `<span class="logo-t" aria-hidden="true"><img src="logo-${k}.png" alt=""></span>`]));
+  /* El puntito de cada tarjeta, con el color de la marca. */
+  const COLOR_MARCA = { visa: '#3D6BFF', master: '#EB001B', mp: '#FFE600', naranja: '#FF6200' };
   const marcaTarjeta = id => {
     const t = App.s && App.s.tarjetas && App.s.tarjetas.find(x => x.id === id);
     const n = E.normalizar(((t && t.nombre) || '') + ' ' + id);
@@ -52,7 +52,7 @@
     if (/naranja/.test(n)) return 'naranja';
     return null;
   };
-  const punto = id => { const m = marcaTarjeta(id); return m ? LOGOS[m] : `<span class="punto" style="background:${colorTarjeta(id)}" aria-hidden="true"></span>`; };
+  const punto = id => { const m = marcaTarjeta(id); return `<span class="punto" style="background:${m ? COLOR_MARCA[m] : colorTarjeta(id)}" aria-hidden="true"></span>`; };
   const TABS = [['hoy', 'Hoy'], ['cargar', 'Cargar'], ['tarjetas', 'Tarjetas'], ['deudas', 'Deudas'], ['compro', '¿Compro?'], ['repartir', 'Repartir']];
 
   const TABS_BASICO = [['hoy', 'Hoy'], ['cargar', 'Gasté'], ['tarjetas', 'Tarjetas'], ['cobre', 'Cobré'], ['compro', '¿Compro?']];
@@ -598,7 +598,7 @@
           <input id="cargar-texto" type="text" value="${esc(App.texto)}" placeholder="televisor 1.580.000 6c mercado pago" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done">
         </div>
         <div id="cargar-vista">${previewCarga()}</div>
-        <div class="chips" role="group" aria-label="Con qué pagaste">${OPCIONES_MEDIO(s).map(([id, n]) => `<button type="button" class="chip ${p.medio === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${E.esTarjeta(s, id) ? punto(id) : ''}${esc(n)}</button>`).join('')}</div>
+        <div class="chips" role="group" aria-label="Con qué pagaste">${OPCIONES_MEDIO(s).map(([id, n]) => `<button type="button" class="chip ${p.medio === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${esc(n)}</button>`).join('')}</div>
         <button class="btn prim lleno">Guardar</button>
       </form>
       ${bloqueCuotas(s)}
@@ -1152,7 +1152,7 @@
           <input id="cargar-texto" type="text" value="${esc(App.texto)}" placeholder="rappi 20450" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done">
         </div>
         <div id="cargar-vista">${previewCarga()}</div>
-        ${s.tarjetas.length ? `<div class="chips" role="group" aria-label="Con qué pagaste">${[['efectivo', 'Efectivo'], ...s.tarjetas.map(t => [t.id, t.nombre])].map(([id, n]) => `<button type="button" class="chip ${(p.medio || 'efectivo') === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${E.esTarjeta(s, id) ? punto(id) : ''}${esc(n)}</button>`).join('')}</div>` : ''}
+        ${s.tarjetas.length ? `<div class="chips" role="group" aria-label="Con qué pagaste">${[['efectivo', 'Efectivo'], ...s.tarjetas.map(t => [t.id, t.nombre])].map(([id, n]) => `<button type="button" class="chip ${(p.medio || 'efectivo') === id ? 'on' : ''}" data-a="poneMedio" data-id="${id}">${esc(n)}</button>`).join('')}</div>` : ''}
         <button class="btn prim lleno">Guardar</button>
       </form>
       ${bloqueCuotas(s)}
