@@ -216,7 +216,7 @@ ${cv.tope >= 1 ? `<div class="barra ${claseBarra}" role="img" aria-label="Usaste
 
   const filaPago = r => {
     const falta = E.faltaMonto(r);
-    return `<button class="fila" data-a="ir" data-tab="tarjetas"><span class="izq"><span class="nom">${punto(r.cardId)}${esc(r.nombre)}</span><span class="chico">${r.vencido ? 'Venció el' : 'Vence'} ${esc(E.textoVence(r))}${r.quien === 'definir' ? ' · falta definir quién paga' : ''}</span></span><span class="der">${falta ? pill('ojo', 'Falta monto', '!') : `<span class="num">${f(r.restante)}</span>`}${r.vencido ? pill('mal', 'Vencido', '×') : (!falta && r.sinResumenReal ? pill('neutro', 'Mínimo') : '')}</span></button>`;
+    return `<button class="fila" data-a="ir" data-tab="tarjetas"><span class="izq"><span class="nom">${punto(r.cardId)}${esc(r.nombre)}</span><span class="chico">${r.vencido ? 'Venció el' : 'Vence'} ${esc(E.textoVence(r))}${r.quien === 'definir' ? ' · falta definir quién paga' : ''}</span></span><span class="der">${falta ? pill('ojo', 'Falta monto', '!') : `<span class="num">${f(r.restante)}</span>`}${r.vencido ? pill('mal', 'Vencido', '×') : (!falta && r.sinResumenReal ? pill('neutro', 'Calculado') : '')}</span></button>`;
   };
 
   function vPlan() {
@@ -300,7 +300,7 @@ ${cv.tope >= 1 ? `<div class="barra ${claseBarra}" role="img" aria-label="Usaste
     const p = k === 'bien' ? pill('bien', 'Vas bien', '✓') : k === 'ojo' ? pill('ojo', 'Vas rápido', '!') : k === 'mal' ? pill('mal', 'Frená', '×') : pill('neutro', `${a.pasaron} de ${a.dias} días`);
     const max = Math.max(1, ...a.enQue.map(x => x.monto));
     const enQue = a.enQue.slice(0, 6).map(x => `<div class="mes-f basico" style="cursor:default;grid-template-columns:118px minmax(0, 1fr) 128px"><span class="m" style="text-transform:none">${esc(CATEGORIAS[x.tipo] || 'Otra cosa')}</span><span class="mes-b"><span style="width:${(x.monto / max * 100).toFixed(1)}%"></span></span><span class="v num">${fc(x.monto)}<span class="chico tercero"> · ${x.veces} ${x.veces === 1 ? 'vez' : (PLURAL[x.tipo] || 'veces')}</span></span></div>`).join('');
-    const pagos = a.tarjetas.filter(x => x.pago.restante >= 1).map(x => `<div class="fila"><span class="izq"><span class="nom">${punto(x.id)}${esc(x.nombre)}</span><span class="chico">Vence ${esc(E.textoVence(x.pago))}${x.pago.sinResumenReal ? ' · lo que llevás hasta hoy' : ''}</span></span><span class="der"><span class="num">${f(x.pago.restante)}</span></span></div>`).join('');
+    const pagos = a.tarjetas.filter(x => x.pago.restante >= 1).map(x => `<div class="fila"><span class="izq"><span class="nom">${punto(x.id)}${esc(x.nombre)}</span><span class="chico">${x.pago.vencido ? 'Venció' : 'Vence'} ${esc(E.textoVence(x.pago))} · ${x.pago.sinResumenReal ? 'total calculado' : 'total del resumen'}</span></span><span class="der"><span class="num">${f(x.pago.restante)}</span></span></div>`).join('');
     return `<section class="bloque">
         <div class="entre"><h2>Tus tarjetas desde el cierre</h2>${p}</div>
         <div class="veredicto ${k === 'neutro' ? '' : k}" style="padding:12px 14px"><h3 style="font-size:19px">${esc(a.titulo)}</h3><p>${esc(a.detalle)}</p>${a.recortable.length ? `<p class="costo">Lo que más podés cortar: ${esc(a.recortable.map(x => (CATEGORIAS[x.tipo] || x.tipo).toLowerCase()).join(', '))}. Suman ${f(a.recortable.reduce((u, x) => u + x.monto, 0))} en ${a.pasaron} días.</p>` : ''}</div>
@@ -434,7 +434,7 @@ ${cv.tope >= 1 ? `<div class="barra ${claseBarra}" role="img" aria-label="Usaste
         <p>${esc(frase)}</p>
         ${ing < 1 ? '' : `<p class="ayuda">"Te queda" es lo que te entra por mes (${fc(ing)}) menos tarjetas y tu tope para vivir.</p>`}
       </section>
-      ${hayMinimos ? '<div class="aviso">No cargué consumos viejos. Estos montos solo incluyen lo que cargues desde ahora y tus mensuales. Tocá "Datos del resumen" para poner el monto real de cada tarjeta.</div>' : ''}
+      ${hayMinimos ? '<div class="aviso">No cargué consumos viejos. Los totales calculados suman lo que cargaste y tus mensuales. Tocá "Datos del resumen" para poner el total real de cada tarjeta.</div>' : ''}
       ${s.tarjetas.map(t => bloqueTarjeta(t, h)).join('')}`;
   }
 
@@ -443,7 +443,7 @@ ${cv.tope >= 1 ? `<div class="barra ${claseBarra}" role="img" aria-label="Usaste
     let estado;
     if (r.vencido) estado = pill('mal', 'Vencida', '×');
     else if (r.estado === 'parcial') estado = pill('ojo', 'Pago parcial', '!');
-    else if (r.estado === 'pendiente') estado = r.sinResumenReal ? pill('neutro', 'Mínimo conocido') : pill('azul', 'Monto real');
+    else if (r.estado === 'pendiente') estado = r.sinResumenReal ? pill('neutro', 'Total calculado') : pill('azul', 'Total del resumen');
     else if (E.faltaMonto(r)) estado = pill('ojo', 'Falta monto', '!');
     else estado = pill('bien', 'Sin pagos pendientes', '✓');
     const falta = E.faltaMonto(r);
@@ -480,7 +480,7 @@ ${cv.tope >= 1 ? `<div class="barra ${claseBarra}" role="img" aria-label="Usaste
       ${quienes.length > 1 ? `<div class="campo"><span class="et-campo">¿Quién pagó?</span>${chips('p-quien', quienes, 'yo')}<span class="ayuda" id="p-quien-ayuda">Sale de tu plata.</span></div>` : '<input type="hidden" name="p-quien" value="yo"><p class="ayuda">Sale de tu plata.</p>'}
       ${campo('p-nota', 'Nota (opcional)', '')}
       <button class="btn prim lleno">Guardar pago</button>
-    </form>`, `Resumen de ${esc(E.mesNombre(ym))}: ${E.faltaMonto(r) ? 'todavía sin monto' : `quedan ${f(r.restante)}${r.sinResumenReal && !B() ? ' (mínimo)' : ''}`}`);
+    </form>`, `Resumen de ${esc(E.mesNombre(ym))}: ${E.faltaMonto(r) ? 'todavía sin monto' : `quedan ${f(r.restante)}${r.sinResumenReal && !B() ? ' (calculado)' : ''}`}`);
     actualizarQueda();
   }
 
@@ -767,9 +767,9 @@ ${cv.tope >= 1 ? `<div class="barra ${claseBarra}" role="img" aria-label="Usaste
       const ls = plan.lineas.filter(l => l.grupo === g);
       if (!ls.length) return '';
       const detalle = l => [
-        l.textoVence ? `Vence ${l.textoVence}` : '',
+        l.textoVence ? `${l.vencido ? 'Venció' : 'Vence'} ${l.textoVence}` : '',
         l.sinMonto ? '' : l.falta >= 1 ? `Faltarían ${f(l.falta)}` : (g === 'ahorro' ? '' : 'Cubierto'),
-        l.minimo ? 'monto mínimo' : '',
+        l.minimo ? 'total calculado' : '',
         l.usd != null && l.asigna >= 1 ? `≈ ${E.fmtUSD(l.usd)}` : ''
       ].filter(Boolean).join(' · ');
       return `<section class="bloque"><div class="entre"><h2>${titulo}</h2><span class="num">${f(ls.reduce((a, l) => a + l.asigna, 0))}</span></div><div class="lista">${ls.map(l => `<div class="fila"><span class="izq"><span class="nom">${esc(l.nombre)}</span><span class="chico">${esc(detalle(l))}</span></span><span class="der">${l.sinMonto ? pill('ojo', 'Falta monto', '!') : `<span class="num">${f(l.asigna)}</span>`}</span></div>`).join('')}</div></section>`;
@@ -777,7 +777,7 @@ ${cv.tope >= 1 ? `<div class="barra ${claseBarra}" role="img" aria-label="Usaste
     const avisos = [];
     if (plan.faltaTarjetas >= 1) avisos.push(`<div class="aviso mal">No alcanza para las tarjetas: faltan ${f(plan.faltaTarjetas)}. Nada va a deudas hasta cubrirlas.</div>`);
     if (plan.tarjetasSinMonto.length) avisos.push(`<div class="aviso"><strong>Faltan montos de tarjetas</strong><span>${esc(plan.tarjetasSinMonto.join(', '))} no tienen monto, así que no les reservo nada. Cargalos primero en Tarjetas: van antes que las deudas.</span></div>`);
-    else if (plan.hayMinimos) avisos.push('<div class="aviso">Algunas tarjetas figuran con el mínimo conocido. Si el resumen real es más, sale de lo de abajo.</div>');
+    else if (plan.hayMinimos) avisos.push('<div class="aviso">Algunas tarjetas tienen el total calculado con lo que cargaste. Si el resumen real es más, sale de lo de abajo.</div>');
     if (plan.sinMonto.length) avisos.push(`<p class="ayuda">${esc(plan.sinMonto.join(' y '))} no entra en el reparto hasta que cargues el monto.</p>`);
     return `${avisos.join('')}
       ${grupo('tarjetas', 'Primero: tarjetas')}

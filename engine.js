@@ -290,6 +290,9 @@
 
   E.textoVence = r => (r.venceHasta ? `${partes(r.vence).d} al ${fechaCorta(r.venceHasta)}` : fechaCorta(r.vence));
 
+  /* Orden para pagar: primero lo que vence más pronto; lo que ya venció va al final. */
+  E.porVence = (a, b) => (a.vencido === b.vencido ? 0 : a.vencido ? 1 : -1) || (a.vence < b.vence ? -1 : a.vence > b.vence ? 1 : 0);
+
   E.proximosPagos = (s, hoy = E.hoyISO(), meses = 8) => {
     const desde = s.config.inicio && s.config.inicio < ymDe(hoy) ? s.config.inicio : ymDe(hoy);
     const salida = [];
@@ -301,7 +304,7 @@
         if (r.restante >= 1) salida.push(r);
       }
     }
-    return salida.sort((a, b) => (a.vence < b.vence ? -1 : a.vence > b.vence ? 1 : 0));
+    return salida.sort(E.porVence);
   };
 
   /* El próximo vencimiento de una tarjeta, aunque todavía no tenga monto cargado. */
@@ -319,7 +322,7 @@
   /* Un renglón por tarjeta, de la fecha más cercana a la más lejana. */
   E.proximosVencimientos = (s, hoy = E.hoyISO()) => s.tarjetas
     .map(t => E.proximoDeTarjeta(s, t.id, hoy))
-    .sort((a, b) => (a.vence < b.vence ? -1 : a.vence > b.vence ? 1 : 0));
+    .sort(E.porVence);
   E.faltaMonto = r => r.estado === 'vacio' && r.sinResumenReal;
 
   /* ---------- Plata en mano ---------- */
@@ -1004,7 +1007,8 @@
       const cierreAnt = d <= t.cierre ? fechaEn(sumarMes(ym, -1), t.cierre) : fechaEn(ym, t.cierre);
       const compras = s.compras.filter(c => c.medio === t.id && c.fecha > cierreAnt && c.fecha <= hoy);
       const gastado = suma(compras, montoQueCuenta);
-      const pago = E.resumen(s, t.id, E.primerVencimiento(t, hoy), hoy);
+      /* El resumen que toca pagar ahora (el mismo que muestra cada tarjeta), con su total. */
+      const pago = E.proximoDeTarjeta(s, t.id, hoy);
       return { id: t.id, nombre: t.nombre, cierreAnt, cierreProx, compras, gastado, pago };
     }).filter(x => x.compras.length || x.pago.restante >= 1);
     const conCompras = tarjetas.filter(x => x.compras.length);
@@ -1030,9 +1034,9 @@
     let estado, titulo, detalle;
     const aPagar = suma(tarjetas, x => x.pago.restante);
     if (tope < 1 && aPagar >= 1) {
-      const prox = [...tarjetas].filter(x => x.pago.restante >= 1).sort((a, b) => (a.pago.vence < b.pago.vence ? -1 : 1))[0];
+      const prox = [...tarjetas].filter(x => x.pago.restante >= 1).map(x => x.pago).sort(E.porVence)[0];
       estado = 'mal'; titulo = 'No gastes nada más con tarjeta';
-      detalle = `Ya tenés ${E.fmt(aPagar)} para pagar de tarjetas (lo primero, ${prox.nombre} el ${fechaCorta(prox.pago.vence)}) y no hay un cobro seguro. Desde el ${fechaCorta(desde)} llevás ${E.fmt(gastado)}. Hasta que entre plata, solo lo necesario y en efectivo.`;
+      detalle = `Ya tenés ${E.fmt(aPagar)} para pagar de tarjetas (lo primero, ${prox.nombre} el ${fechaCorta(prox.vence)}) y no hay un cobro seguro. Desde el ${fechaCorta(desde)} llevás ${E.fmt(gastado)}. Hasta que entre plata, solo lo necesario y en efectivo.`;
     } else if (tope < 1 && ing >= 1) {
       estado = 'mal'; titulo = 'No gastes nada más con tarjeta';
       detalle = `Lo que cobrás seguro (${E.fmt(ing)}) ya se va en cuotas y mensuales de tarjeta. Desde el ${fechaCorta(desde)} llevás ${E.fmt(gastado)}. Hasta el cierre del ${fechaCorta(cierre)}, solo lo necesario: súper, transporte y salud. Las comisiones, cuando entren, van a pagar tarjetas y deudas.`;
@@ -1161,11 +1165,11 @@
     /* 1. Tarjetas siempre primero, por fecha */
     const conMonto = E.proximosPagos(s, fecha).filter(r => r.vence <= limite);
     const sinMontoT = E.proximosVencimientos(s, fecha).filter(r => E.faltaMonto(r) && r.vence <= limite);
-    const tarjetas = [...conMonto, ...sinMontoT].sort((a, b) => (a.vence < b.vence ? -1 : a.vence > b.vence ? 1 : 0));
+    const tarjetas = [...conMonto, ...sinMontoT].sort(E.porVence);
     for (const r of tarjetas) {
       const asigna = Math.min(resto, r.restante);
       resto -= asigna;
-      lineas.push({ id: E.uid(), grupo: 'tarjetas', ref: { cardId: r.cardId, ym: r.ym }, nombre: r.nombre, vence: r.vence, textoVence: E.textoVence(r), debe: r.restante, asigna, falta: r.restante - asigna, minimo: r.sinResumenReal && r.restante >= 1, sinMonto: E.faltaMonto(r), hecho: !!E.faltaMonto(r) });
+      lineas.push({ id: E.uid(), grupo: 'tarjetas', ref: { cardId: r.cardId, ym: r.ym }, nombre: r.nombre, vence: r.vence, vencido: r.vencido, textoVence: E.textoVence(r), debe: r.restante, asigna, falta: r.restante - asigna, minimo: r.sinResumenReal && r.restante >= 1, sinMonto: E.faltaMonto(r), hecho: !!E.faltaMonto(r) });
     }
 
     /* 2. Plata para vivir: completa el tope del mes con lo que ya no tengas en mano */
